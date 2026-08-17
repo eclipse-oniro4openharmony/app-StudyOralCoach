@@ -1,0 +1,23 @@
+{
+  "modulePathMap": {
+    "entry": "C:\\Users\\chens\\DevEcoStudioProjects\\StudyOralCoach\\entry"
+  },
+  "compileMode": "esmodule",
+  "projectRootPath": "C:\\Users\\chens\\DevEcoStudioProjects\\StudyOralCoach",
+  "nodeModulesPath": "C:\\Users\\chens\\DevEcoStudioProjects\\StudyOralCoach\\entry\\build\\default\\intermediates\\loader_out\\default\\node_modules",
+  "byteCodeHarInfo": {},
+  "declarationEntry": [],
+  "moduleName": "entry",
+  "hspNameOhmMap": {},
+  "harNameOhmMap": {},
+  "packageManagerType": "ohpm",
+  "compileEntry": [],
+  "otherCompileFiles": [],
+  "dynamicImportLibInfo": {},
+  "routerMap": [],
+  "hspResourcesMap": {},
+  "updateVersionInfo": {},
+  "customizedHar": false,
+  "anBuildOutPut": "C:\\Users\\chens\\DevEcoStudioProjects\\StudyOralCoach\\entry\\build\\default\\intermediates\\loader_out\\default\\an\\arm64-v8a",
+  "anBuildMode": "type"
+}
