@@ -1,5 +1,15 @@
 {
   "src": [
-    "pages/Index"
+    "pages/Index",
+    "pages/HomePage",
+    "pages/TopicPage",
+    "pages/PracticePage",
+    "pages/HistoryPage",
+    "pages/TopicDetailPage",
+    "pages/MaterialsPage",
+    "pages/ScorePage",
+    "pages/ExamModePage",
+    "pages/WeakTopicsPage",
+    "pages/PracticeStatsPage"
   ]
 }

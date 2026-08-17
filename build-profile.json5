@@ -4,9 +4,9 @@
       {
         "name": "default",
         "signingConfig": "default",
-        "compileSdkVersion": 20,
-        "compatibleSdkVersion": 20,
-        "runtimeOS": "OpenHarmony"
+        "compatibleSdkVersion": "6.0.0(20)",
+        "targetSdkVersion": "6.0.0(20)",
+        "runtimeOS": "HarmonyOS"
       }
     ],
     "buildModeSet": [
@@ -15,6 +15,20 @@
       },
       {
         "name": "release"
+      }
+    ],
+    "signingConfigs": [
+      {
+        "name": "default",
+        "material": {
+          "certpath": "C:/Users/chens/.ohos/config/openharmony/default_StudyOralCoach_pSqpzlX3EKmg0rsBbZXy-DL5rMCC1XD0jQ8JAFIHF7A=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001AF7F063B2475997E9F332F76CFF156D74264EE1FE14499A53A98B851CFEE5429F8B6B96ED09DC",
+          "profile": "C:/Users/chens/.ohos/config/openharmony/default_StudyOralCoach_pSqpzlX3EKmg0rsBbZXy-DL5rMCC1XD0jQ8JAFIHF7A=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:/Users/chens/.ohos/config/openharmony/default_StudyOralCoach_pSqpzlX3EKmg0rsBbZXy-DL5rMCC1XD0jQ8JAFIHF7A=.p12",
+          "storePassword": "0000001AD3AC3FB6EEFDB3AC2EA2FDEBFC2B5518C82B53703F7A06B0C5F220007545B3C9B5E02C3007AB"
+        }
       }
     ]
   },
