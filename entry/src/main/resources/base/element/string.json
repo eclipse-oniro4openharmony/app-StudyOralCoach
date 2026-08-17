@@ -2,15 +2,19 @@
   "string": [
     {
       "name": "module_desc",
-      "value": "module description"
+      "value": "AI Oral Exam Practice Assistant"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "description"
+      "value": "StudyOral Coach"
     },
     {
       "name": "EntryAbility_label",
-      "value": "label"
+      "value": "StudyOral Coach"
+    },
+    {
+      "name": "app_name",
+      "value": "StudyOral Coach"
     }
   ]
 }

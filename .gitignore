@@ -1,0 +1,15 @@
+.hvigor/
+.idea/
+build/
+entry/build/
+entry/.preview/
+*.hap
+*.app
+*.log
+*.tmp
+*.tsbuildinfo
+*.tsbuildinfo.linter
+local.properties
+ui-*.png
+app-icon-sheet.png
+icon-reference-sheet.png
