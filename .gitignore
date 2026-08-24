@@ -10,6 +10,8 @@ entry/.preview/
 *.tsbuildinfo
 *.tsbuildinfo.linter
 local.properties
+backend/.env
+node_modules/
 ui-*.png
 app-icon-sheet.png
 icon-reference-sheet.png

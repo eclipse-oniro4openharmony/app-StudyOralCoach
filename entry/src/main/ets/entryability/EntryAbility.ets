@@ -1,10 +1,23 @@
-import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
+import { AbilityConstant, ConfigurationConstant, UIAbility, Want, abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 
 const DOMAIN = 0x0000;
 
 export default class EntryAbility extends UIAbility {
+  async requestMicrophonePermission(): Promise<void> {
+    const atManager = abilityAccessCtrl.createAtManager()
+    const permissions: Permissions[] = ['ohos.permission.MICROPHONE']
+    try {
+      const result = await atManager.requestPermissionsFromUser(this.context as common.UIAbilityContext, permissions)
+      if (result.authResults[0] !== 0) {
+        hilog.error(DOMAIN, 'testTag', '%{public}s', 'Microphone permission denied')
+      }
+    } catch (err) {
+      hilog.error(DOMAIN, 'testTag', 'Failed to request microphone permission. Cause: %{public}s', JSON.stringify(err))
+    }
+  }
+
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     try {
       this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
@@ -21,6 +34,7 @@ export default class EntryAbility extends UIAbility {
   onWindowStageCreate(windowStage: window.WindowStage): void {
     // Main window is created, set main page for this ability
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
+    this.requestMicrophonePermission()
 
     windowStage.loadContent('pages/HomePage', (err) => {
       if (err.code) {
