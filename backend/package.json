@@ -1,0 +1,15 @@
+{
+  "name": "study-oral-coach-pdf-backend",
+  "version": "1.0.0",
+  "description": "PDF text extraction backend for StudyOralCoach.",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pdfjs-dist": "^4.10.38",
+    "ws": "^8.21.3"
+  }
+}

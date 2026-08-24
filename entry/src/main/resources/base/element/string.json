@@ -15,6 +15,10 @@
     {
       "name": "app_name",
       "value": "StudyOral Coach"
+    },
+    {
+      "name": "microphone_permission_reason",
+      "value": "Microphone access is used to transcribe spoken practice answers."
     }
   ]
 }

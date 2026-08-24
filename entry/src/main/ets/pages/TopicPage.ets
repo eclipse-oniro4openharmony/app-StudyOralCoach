@@ -134,10 +134,12 @@ struct TopicPage {
       .layoutWeight(1)
       .margin({ left: 14 })
 
-      Text('›')
-        .fontSize(26)
-        .fontColor('#59627E')
+      Image($r('app.media.ic_next_question'))
+        .width(22)
+        .height(22)
+        .objectFit(ImageFit.Contain)
         .margin({ left: 10 })
+        .draggable(false)
     }
     .width('100%')
     .height(92)

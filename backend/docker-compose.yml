@@ -1,0 +1,15 @@
+services:
+  study-oral-pdf-backend:
+    build: .
+    container_name: study-oral-pdf-backend
+    ports:
+      - "${STUDY_ORAL_PDF_BACKEND_PORT:-18081}:18081"
+    environment:
+      PORT: "18081"
+      MAX_JSON_SIZE: "${MAX_JSON_SIZE:-35mb}"
+      PDF_TEXT_MIN_LENGTH: "${PDF_TEXT_MIN_LENGTH:-1}"
+      ENABLE_LOCAL_AI_QA: "${ENABLE_LOCAL_AI_QA:-true}"
+      OLLAMA_URL: "${OLLAMA_URL:-http://host.docker.internal:11434}"
+      OLLAMA_MODEL: "${OLLAMA_MODEL:-llama3.2:3b}"
+      DEEPGRAM_API_KEY: "${DEEPGRAM_API_KEY:-}"
+    restart: unless-stopped
