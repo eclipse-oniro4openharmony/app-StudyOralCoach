@@ -35,6 +35,7 @@ struct HomePage {
   @State materialSwipeStartOffset: number = 0
   @State isPracticeHold: boolean = false
   private storage: StorageService = StorageService.getInstance()
+  private homeBannerController: SwiperController = new SwiperController()
 
   aboutToAppear(): void {
     const routeParams = router.getParams()
@@ -562,11 +563,15 @@ struct HomePage {
       .height(74)
 
       if (showDivider) {
-        Column()
-          .height(1)
-          .width('100%')
-          .backgroundColor('#EEF1F7')
-          .margin({ left: 56 })
+        Row() {
+          Blank()
+            .width(56)
+          Column()
+            .height(1)
+            .layoutWeight(1)
+            .backgroundColor('#EEF1F7')
+        }
+        .width('100%')
       }
     }
     .width('100%')
@@ -579,6 +584,45 @@ struct HomePage {
         this.getUIContext().getRouter().pushUrl({ url: routeUrl })
       }
     })
+  }
+
+  @Builder
+  private homeBannerSwiper() {
+    Swiper(this.homeBannerController) {
+      Image($r('app.media.home_banner_1'))
+        .width('100%')
+        .height(142)
+        .objectFit(ImageFit.Contain)
+        .backgroundColor('#F8FBFF')
+        .borderRadius(16)
+        .draggable(false)
+      Image($r('app.media.home_banner_2'))
+        .width('100%')
+        .height(142)
+        .objectFit(ImageFit.Contain)
+        .backgroundColor('#F8FBFF')
+        .borderRadius(16)
+        .draggable(false)
+      Image($r('app.media.home_banner_3'))
+        .width('100%')
+        .height(142)
+        .objectFit(ImageFit.Contain)
+        .backgroundColor('#F8FBFF')
+        .borderRadius(16)
+        .draggable(false)
+    }
+    .width('100%')
+    .height(142)
+    .cachedCount(3)
+    .index(0)
+    .autoPlay(true)
+    .interval(5000)
+    .indicator(true)
+    .loop(true)
+    .duration(700)
+    .itemSpace(14)
+    .curve(Curve.EaseInOut)
+    .margin({ top: 10, bottom: 10 })
   }
 
   @Builder
@@ -709,30 +753,92 @@ struct HomePage {
   }
 
   @Builder
+  private practiceFilesPanel() {
+    Column() {
+      Row() {
+        Text('Attached Files')
+          .fontSize(15)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#111936')
+          .layoutWeight(1)
+      }
+      .width('100%')
+
+      if (this.recentMaterials.length > 0) {
+        ForEach(this.recentMaterials, (material: StudyMaterialRecord, index: number) => {
+          Row() {
+            this.brandIcon('materials', 30)
+            Column() {
+              Text(material.fileName)
+                .fontSize(13)
+                .fontWeight(FontWeight.Medium)
+                .fontColor('#111936')
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+                .width('100%')
+              Text(material.questionCount.toString() + ' Q&A')
+                .fontSize(11)
+                .fontColor('#68728D')
+                .margin({ top: 2 })
+            }
+            .layoutWeight(1)
+            .margin({ left: 10 })
+            Image($r('app.media.ic_next_question'))
+              .width(20)
+              .height(20)
+              .objectFit(ImageFit.Contain)
+              .margin({ left: 8 })
+              .draggable(false)
+          }
+          .width('100%')
+          .height(42)
+          .margin({ top: index === 0 ? 10 : 6 })
+          .onClick(() => {
+            void this.openMaterial(material)
+          })
+        }, (material: StudyMaterialRecord) => material.id)
+      } else {
+        Row() {
+          this.brandIcon('materials', 30, true)
+          Text('No files added yet')
+            .fontSize(13)
+            .fontColor('#68728D')
+            .layoutWeight(1)
+            .margin({ left: 10 })
+        }
+        .width('100%')
+        .height(42)
+        .margin({ top: 10 })
+      }
+    }
+    .width('100%')
+    .padding(14)
+    .backgroundColor('#FFFFFF')
+    .borderRadius(12)
+    .border({ width: 1, color: '#E6EAF4' })
+    .margin({ top: 16 })
+  }
+
+  @Builder
   private practiceTab() {
     Scroll() {
       Column() {
         Row() {
-          Column() {
-            Text('Practice')
-              .fontSize(22)
-              .fontWeight(FontWeight.Bold)
-              .fontColor('#080D2D')
-            Text('Choose a topic and start a mock oral exam.')
-              .fontSize(13)
-              .fontColor('#56607D')
-              .margin({ top: 7 })
-          }
-          .layoutWeight(1)
+          Text('Practice')
+            .fontSize(22)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#080D2D')
+            .layoutWeight(1)
         }
         .width('100%')
-        .margin({ top: 12, bottom: 18 })
+        .margin({ top: 12, bottom: 8 })
 
         Column() {
           this.practiceStartButton()
+          this.practiceFilesPanel()
         }
         .width('100%')
-          .layoutWeight(1)
+        .layoutWeight(1)
         .justifyContent(FlexAlign.Center)
 
       }
@@ -984,17 +1090,19 @@ struct HomePage {
         Scroll() {
           Column() {
             Row() {
-              Column() {
-                Text('Home')
-                  .fontSize(22)
-                  .fontWeight(FontWeight.Bold)
-                  .fontColor('#080D2D')
-              }
-              .layoutWeight(1)
-              this.brandIcon('home', 44)
+              Text('Home')
+                .fontSize(22)
+                .fontWeight(FontWeight.Bold)
+                .fontColor('#080D2D')
+                .layoutWeight(1)
             }
             .width('100%')
-            .margin({ top: 12, bottom: 18 })
+            .margin({ top: 12, bottom: 8 })
+
+            this.homeBannerSwiper()
+
+            Blank()
+              .layoutWeight(1)
 
             Column() {
               this.homeActionRow(
@@ -1048,11 +1156,18 @@ struct HomePage {
             .backgroundColor('#FFFFFF')
             .borderRadius(12)
             .border({ width: 1, color: '#E6EAF4' })
+
+            Blank()
+              .layoutWeight(1)
           }
           .width('100%')
+          .height('100%')
+          .justifyContent(FlexAlign.Start)
+          .alignItems(HorizontalAlign.Start)
           .padding({ left: 18, right: 18, bottom: 22 })
         }
         .layoutWeight(1)
+        .width('100%')
         .scrollBar(BarState.Off)
       } else if (this.currentTab === 1) {
         this.practiceTab()

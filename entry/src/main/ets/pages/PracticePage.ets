@@ -720,9 +720,8 @@ struct PracticePage {
           .fontWeight(FontWeight.Bold)
           .fontColor('#FFFFFF')
           .layoutWeight(1)
-          .textAlign(TextAlign.Center)
-        Blank()
-          .width(34)
+          .textAlign(TextAlign.Start)
+          .margin({ left: 10 })
       }
       .width('100%')
       .height(70)
