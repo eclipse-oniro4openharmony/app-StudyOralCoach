@@ -1,13 +1,16 @@
 import { router } from '@kit.ArkUI'
 import { common } from '@kit.AbilityKit'
-import { SessionData } from '../model/DataTypes'
+import { PracticeExamData, SessionData } from '../model/DataTypes'
 import { MaterialQuestionAnswerRecord, StudyMaterialRecord } from '../model/StudyMaterialRecord'
 import { MaterialIngestionService } from '../services/MaterialIngestionService'
 import { StorageService } from '../services/StorageService'
 
 class PracticeFileHistoryRecord {
+  id: string = ''
+  examId: string = ''
   materialId: string = ''
   fileName: string = ''
+  progressText: string = ''
   latestSessionId: string = ''
   latestPracticeAt: string = ''
 }
@@ -32,8 +35,27 @@ struct HistoryPage {
     const questions = await service.listAllQuestions(1000)
     const materials = await service.listRecent(1000)
     const records: PracticeFileHistoryRecord[] = []
+    const exams = this.storage.getPracticeExams()
+
+    exams.forEach((exam: PracticeExamData) => {
+      if (exam.answeredQuestionIds.length === 0) {
+        return
+      }
+      const record = new PracticeFileHistoryRecord()
+      record.id = exam.id
+      record.examId = exam.id
+      record.fileName = this.fileNamesForMaterialIds(exam.materialIds, materials)
+      record.progressText = exam.answeredQuestionIds.length.toString() + '/' + exam.questionIds.length.toString()
+      record.latestPracticeAt = exam.updatedAt
+      const latestSession = sessions.find((session: SessionData) => (session.examId ?? '') === exam.id)
+      record.latestSessionId = latestSession !== undefined ? latestSession.id : ''
+      records.push(record)
+    })
 
     sessions.forEach((session: SessionData) => {
+      if ((session.examId ?? '').length > 0) {
+        return
+      }
       const question = questions.find((item: MaterialQuestionAnswerRecord) => item.id === session.questionId)
       if (question === undefined) {
         return
@@ -42,8 +64,10 @@ struct HistoryPage {
       let record = records.find((item: PracticeFileHistoryRecord) => item.materialId === question.materialId)
       if (record === undefined) {
         record = new PracticeFileHistoryRecord()
+        record.id = question.materialId
         record.materialId = question.materialId
         record.fileName = material !== undefined ? material.fileName : 'Practice file'
+        record.progressText = 'Legacy'
         records.push(record)
       }
 
@@ -56,6 +80,23 @@ struct HistoryPage {
     this.records = records.sort((a: PracticeFileHistoryRecord, b: PracticeFileHistoryRecord) =>
       Number(b.latestPracticeAt) - Number(a.latestPracticeAt))
     this.isLoading = false
+  }
+
+  private fileNamesForMaterialIds(materialIds: string[], materials: StudyMaterialRecord[]): string {
+    const names: string[] = []
+    materialIds.forEach((materialId: string) => {
+      const material = materials.find((item: StudyMaterialRecord) => item.id === materialId)
+      if (material !== undefined && names.indexOf(material.fileName) < 0) {
+        names.push(material.fileName)
+      }
+    })
+    if (names.length === 0) {
+      return 'Practice files'
+    }
+    if (names.length <= 2) {
+      return names.join(', ')
+    }
+    return names[0] + ', ' + names[1] + ' +' + (names.length - 2).toString()
   }
 
   private formatTime(timestamp: string): string {
@@ -87,22 +128,27 @@ struct HistoryPage {
   private historyFileRow(record: PracticeFileHistoryRecord) {
     Row() {
       this.brandIcon('materials', 44)
-      Row() {
+      Column() {
         Text(record.fileName)
           .fontSize(15)
           .fontWeight(FontWeight.Bold)
           .fontColor('#111936')
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .layoutWeight(1)
-        Text(this.formatTime(record.latestPracticeAt))
+          .width('100%')
+        Text('Practice Result' + (record.progressText.length > 0 ? (' · ' + record.progressText) : ''))
           .fontSize(12)
           .fontColor('#59627E')
-          .margin({ left: 10 })
+          .margin({ top: 4 })
       }
       .width('100%')
       .layoutWeight(1)
       .margin({ left: 12 })
+
+      Text(this.formatTime(record.latestPracticeAt))
+        .fontSize(12)
+        .fontColor('#59627E')
+        .margin({ left: 10 })
 
       Image($r('app.media.ic_next_question'))
         .width(22)
@@ -121,7 +167,7 @@ struct HistoryPage {
     .onClick(() => {
       router.pushUrl({
         url: 'pages/HistoryDetailPage',
-        params: { sessionId: record.latestSessionId, materialId: record.materialId }
+        params: { sessionId: record.latestSessionId, materialId: record.materialId, examId: record.examId }
       })
     })
   }
@@ -202,7 +248,7 @@ struct HistoryPage {
           } else {
             ForEach(this.records, (record: PracticeFileHistoryRecord) => {
               this.historyFileRow(record)
-            }, (record: PracticeFileHistoryRecord) => record.materialId)
+            }, (record: PracticeFileHistoryRecord) => record.id)
           }
         }
         .width('100%')

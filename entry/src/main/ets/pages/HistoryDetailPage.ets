@@ -19,8 +19,10 @@ class HistoryQuestionResult {
 @Component
 struct HistoryDetailPage {
   @State sessionId: string = ''
+  @State examId: string = ''
   @State materialId: string = ''
   @State fileName: string = 'Practice Result'
+  @State attachmentNames: string = ''
   @State selectedSession: SessionData = new SessionData()
   @State selectedEvaluation: EvaluationData = new EvaluationData()
   @State hasSelectedEvaluation: boolean = false
@@ -31,6 +33,7 @@ struct HistoryDetailPage {
   aboutToAppear(): void {
     const params = router.getParams() as Record<string, string>
     this.sessionId = params.sessionId ?? ''
+    this.examId = params.examId ?? ''
     this.materialId = params.materialId ?? ''
     const context = getContext(this) as common.UIAbilityContext
     this.storage.init(context).then(async () => {
@@ -40,9 +43,11 @@ struct HistoryDetailPage {
 
   private async loadData(context: common.UIAbilityContext): Promise<void> {
     const sessions = this.storage.getSessions()
-    const selected = sessions.find((session: SessionData) => session.id === this.sessionId)
+    const selected = this.sessionId.length > 0 ? sessions.find((session: SessionData) => session.id === this.sessionId) :
+      sessions.find((session: SessionData) => (session.examId ?? '') === this.examId)
     if (selected !== undefined) {
       this.selectedSession = selected
+      this.sessionId = selected.id
     }
     const evaluation = this.storage.getEvaluationBySessionId(this.sessionId)
     if (evaluation !== null) {
@@ -53,19 +58,35 @@ struct HistoryDetailPage {
     const evaluations = this.storage.getEvaluations()
     const service = new MaterialIngestionService(context)
     const materials = await service.listRecent(1000)
-    const material = materials.find((item: StudyMaterialRecord) => item.id === this.materialId)
-    if (material !== undefined) {
-      this.fileName = material.fileName
+    const allQuestions = await service.listAllQuestions(1000)
+    const exam = this.examId.length > 0 ? this.storage.getPracticeExamById(this.examId) : null
+    let questions: MaterialQuestionAnswerRecord[] = []
+    if (exam !== null) {
+      this.attachmentNames = this.fileNamesForMaterialIds(exam.materialIds, materials)
+      this.fileName = this.attachmentNames
+      exam.questionIds.forEach((questionId: string) => {
+        const question = allQuestions.find((item: MaterialQuestionAnswerRecord) => item.id === questionId)
+        if (question !== undefined) {
+          questions.push(question)
+        }
+      })
+    } else {
+      const material = materials.find((item: StudyMaterialRecord) => item.id === this.materialId)
+      if (material !== undefined) {
+        this.fileName = material.fileName
+        this.attachmentNames = material.fileName
+      }
+      questions = this.materialId.length > 0 ? await service.listQuestions(this.materialId) : allQuestions
     }
-    const questions = this.materialId.length > 0 ? await service.listQuestions(this.materialId) :
-      await service.listAllQuestions(1000)
     const resultRows: HistoryQuestionResult[] = []
     questions.forEach((question: MaterialQuestionAnswerRecord) => {
       const row = new HistoryQuestionResult()
       row.id = question.id
       row.question = question.question
       row.correctAnswer = question.answer
-      const practicedSession = sessions.find((session: SessionData) => session.questionId === question.id)
+      const practicedSession = this.examId.length > 0 ?
+        sessions.find((session: SessionData) => (session.examId ?? '') === this.examId && session.questionId === question.id) :
+        sessions.find((session: SessionData) => session.questionId === question.id)
       if (practicedSession !== undefined) {
         row.practiced = true
         row.userAnswer = practicedSession.userAnswer
@@ -79,6 +100,20 @@ struct HistoryDetailPage {
     })
     this.rows = resultRows
     this.isLoading = false
+  }
+
+  private fileNamesForMaterialIds(materialIds: string[], materials: StudyMaterialRecord[]): string {
+    const names: string[] = []
+    materialIds.forEach((materialId: string) => {
+      const material = materials.find((item: StudyMaterialRecord) => item.id === materialId)
+      if (material !== undefined && names.indexOf(material.fileName) < 0) {
+        names.push(material.fileName)
+      }
+    })
+    if (names.length === 0) {
+      return 'Practice files'
+    }
+    return names.join(', ')
   }
 
   @Builder
@@ -197,7 +232,7 @@ struct HistoryDetailPage {
                 .lineHeight(21)
                 .width('100%')
                 .margin({ top: 10 })
-              Text('Includes practiced and not practiced questions from this file.')
+              Text('Attachments: ' + (this.attachmentNames.length > 0 ? this.attachmentNames : this.fileName))
                 .fontSize(12)
                 .fontColor('#59627E')
                 .lineHeight(18)
