@@ -101,6 +101,24 @@ struct HomePage {
     })
   }
 
+  onBackPress(): boolean {
+    if (this.selectedHistoryRecordId.length > 0) {
+      this.clearSelectedHistoryRecord()
+      return true
+    }
+    if (this.revealedMaterialId.length > 0 || this.materialSwipeOffset !== 0) {
+      this.revealedMaterialId = ''
+      this.materialSwipeOffset = 0
+      this.materialSwipeStartOffset = 0
+      return true
+    }
+    if (this.currentTab !== 0) {
+      this.currentTab = 0
+      return true
+    }
+    return false
+  }
+
   loadData(): void {
     this.totalSessions = this.storage.getTotalSessions()
     this.averageScore = this.storage.getAverageScore()
