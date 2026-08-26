@@ -19,6 +19,7 @@ export class QuestionData {
 
 export class SessionData {
   id: string = ''
+  examId: string = ''
   topicId: string = ''
   questionId: string = ''
   questionContent: string = ''
@@ -27,6 +28,17 @@ export class SessionData {
   duration: string = '0'
   startedAt: string = '0'
   endedAt: string = '0'
+}
+
+export class PracticeExamData {
+  id: string = ''
+  status: string = 'in_progress'
+  questionIds: string[] = []
+  answeredQuestionIds: string[] = []
+  materialIds: string[] = []
+  startedAt: string = '0'
+  updatedAt: string = '0'
+  completedAt: string = ''
 }
 
 export class EvaluationData {

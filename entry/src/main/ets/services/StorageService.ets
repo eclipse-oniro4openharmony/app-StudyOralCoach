@@ -1,13 +1,13 @@
 import { preferences } from '@kit.ArkData'
 import { common } from '@kit.AbilityKit'
-import { TopicData, QuestionData, SessionData, EvaluationData, ChatMessageData } from '../model/DataTypes'
-import { EvaluationResult } from './AiService'
+import { TopicData, QuestionData, SessionData, EvaluationData, ChatMessageData, PracticeExamData } from '../model/DataTypes'
 
 export class StorageService {
   private static instance: StorageService
   private topicsStr: string = '[]'
   private questionsStr: string = '[]'
   private sessionsStr: string = '[]'
+  private practiceExamsStr: string = '[]'
   private evaluationsStr: string = '[]'
   private chatMessagesStr: string = '[]'
   private prefStore: preferences.Preferences | null = null
@@ -41,6 +41,7 @@ export class StorageService {
       this.topicsStr = await this.prefStore.get('topics', '[]') as string
       this.questionsStr = await this.prefStore.get('questions', '[]') as string
       this.sessionsStr = await this.prefStore.get('sessions', '[]') as string
+      this.practiceExamsStr = await this.prefStore.get('practiceExams', '[]') as string
       this.evaluationsStr = await this.prefStore.get('evaluations', '[]') as string
       this.chatMessagesStr = await this.prefStore.get('chatMessages', '[]') as string
     } catch (e) {
@@ -56,6 +57,7 @@ export class StorageService {
       await this.prefStore.put('topics', this.topicsStr)
       await this.prefStore.put('questions', this.questionsStr)
       await this.prefStore.put('sessions', this.sessionsStr)
+      await this.prefStore.put('practiceExams', this.practiceExamsStr)
       await this.prefStore.put('evaluations', this.evaluationsStr)
       await this.prefStore.put('chatMessages', this.chatMessagesStr)
       await this.prefStore.flush()
@@ -141,6 +143,70 @@ export class StorageService {
     arr.push(session)
     this.sessionsStr = JSON.stringify(arr)
     this.saveData()
+  }
+
+  getPracticeExams(): PracticeExamData[] {
+    const arr = JSON.parse(this.practiceExamsStr) as PracticeExamData[]
+    return arr
+      .map((exam: PracticeExamData) => this.normalizePracticeExam(exam))
+      .sort((a: PracticeExamData, b: PracticeExamData) => Number(b.updatedAt) - Number(a.updatedAt))
+  }
+
+  getPracticeExamById(examId: string): PracticeExamData | null {
+    if (examId.length === 0) {
+      return null
+    }
+    const found = this.getPracticeExams().find((exam: PracticeExamData) => exam.id === examId)
+    return found ?? null
+  }
+
+  getLatestIncompletePracticeExam(): PracticeExamData | null {
+    const found = this.getPracticeExams().find((exam: PracticeExamData) =>
+      exam.status !== 'completed' && exam.questionIds.length > exam.answeredQuestionIds.length)
+    return found ?? null
+  }
+
+  upsertPracticeExam(exam: PracticeExamData): void {
+    const arr = JSON.parse(this.practiceExamsStr) as PracticeExamData[]
+    const normalized = this.normalizePracticeExam(exam)
+    const index = arr.findIndex((item: PracticeExamData) => item.id === normalized.id)
+    if (index >= 0) {
+      arr[index] = normalized
+    } else {
+      arr.push(normalized)
+    }
+    this.practiceExamsStr = JSON.stringify(arr)
+    this.saveData()
+  }
+
+  markPracticeExamAnswered(examId: string, questionId: string): PracticeExamData | null {
+    const exam = this.getPracticeExamById(examId)
+    if (exam === null) {
+      return null
+    }
+    if (questionId.length > 0 && exam.answeredQuestionIds.indexOf(questionId) < 0) {
+      exam.answeredQuestionIds.push(questionId)
+    }
+    exam.updatedAt = Date.now().toString()
+    if (exam.questionIds.length > 0 && exam.answeredQuestionIds.length >= exam.questionIds.length) {
+      exam.status = 'completed'
+      exam.completedAt = exam.updatedAt
+    }
+    this.upsertPracticeExam(exam)
+    return exam
+  }
+
+  private normalizePracticeExam(source: PracticeExamData): PracticeExamData {
+    const exam = new PracticeExamData()
+    exam.id = source.id ?? ''
+    exam.status = source.status ?? 'in_progress'
+    exam.questionIds = source.questionIds ?? []
+    exam.answeredQuestionIds = source.answeredQuestionIds ?? []
+    exam.materialIds = source.materialIds ?? []
+    exam.startedAt = source.startedAt ?? '0'
+    exam.updatedAt = source.updatedAt ?? exam.startedAt
+    exam.completedAt = source.completedAt ?? ''
+    return exam
   }
 
   getEvaluations(): EvaluationData[] {

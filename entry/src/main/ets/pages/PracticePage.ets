@@ -4,7 +4,8 @@ import { StorageService } from '../services/StorageService'
 import { AiService } from '../services/AiService'
 import { MaterialIngestionService } from '../services/MaterialIngestionService'
 import { DeepgramAsrClient, DeepgramAsrListener, TranscriptionSegment } from '../services/DeepgramAsrClient'
-import { ChatMessageData, SessionData, EvaluationData } from '../model/DataTypes'
+import { ChatMessageData, SessionData, EvaluationData, PracticeExamData } from '../model/DataTypes'
+import { MaterialQuestionAnswerRecord } from '../model/StudyMaterialRecord'
 
 @Entry
 @Component
@@ -30,6 +31,7 @@ struct PracticePage {
   @State evalConfidenceScore: number = 0
   @State evalFeedback: string = ''
   @State sessionId: string = ''
+  @State examId: string = ''
   @State isRecording: boolean = false
   @State speechStatus: string = 'Tap to answer aloud'
   @State questionProgressText: string = '0/0'
@@ -39,10 +41,12 @@ struct PracticePage {
   private asrClient: DeepgramAsrClient = new DeepgramAsrClient()
   private currentQuestionPracticeCount: number = 0
   private currentPracticeIndex: number = 0
+  private activeExam: PracticeExamData | null = null
 
   aboutToAppear(): void {
     const params = router.getParams() as Record<string, string>
     this.topicId = params.topicId ?? ''
+    this.examId = params.examId ?? ''
     const context = getContext(this) as common.UIAbilityContext
     this.materialService = new MaterialIngestionService(context)
     this.storage.init(context).then(() => {
@@ -81,15 +85,12 @@ struct PracticePage {
     let question = ''
 
     if (this.materialService !== null) {
-      const totalQuestions = await this.materialService.countQuestions()
-      const uploadedQuestion = await this.materialService.getRandomPracticeQuestion()
+      const allQuestions = await this.materialService.listAllQuestions(1000)
+      const uploadedQuestion = this.nextExamQuestion(allQuestions)
       if (uploadedQuestion !== null) {
-        if (totalQuestions > 0) {
-          this.currentPracticeIndex += 1
-          if (this.currentPracticeIndex > totalQuestions) {
-            this.currentPracticeIndex = 1
-          }
-          this.questionProgressText = this.currentPracticeIndex.toString() + '/' + totalQuestions.toString()
+        if (this.activeExam !== null && this.activeExam.questionIds.length > 0) {
+          this.currentPracticeIndex = this.activeExam.answeredQuestionIds.length + 1
+          this.questionProgressText = this.currentPracticeIndex.toString() + '/' + this.activeExam.questionIds.length.toString()
         }
         this.currentMaterialQuestionId = uploadedQuestion.id
         this.currentReferenceAnswer = uploadedQuestion.answer
@@ -199,6 +200,7 @@ struct PracticePage {
 
       const sessionObj = new SessionData()
       sessionObj.id = this.sessionId
+      sessionObj.examId = this.examId
       sessionObj.topicId = this.topicId
       sessionObj.questionId = this.currentMaterialQuestionId
       sessionObj.questionContent = this.currentQuestion
@@ -208,6 +210,10 @@ struct PracticePage {
       sessionObj.startedAt = Date.now().toString()
       sessionObj.endedAt = Date.now().toString()
       this.storage.addSession(sessionObj)
+      if (this.examId.length > 0 && this.currentMaterialQuestionId.length > 0) {
+        const updatedExam = this.storage.markPracticeExamAnswered(this.examId, this.currentMaterialQuestionId)
+        this.activeExam = updatedExam
+      }
       if (this.materialService !== null && this.currentMaterialQuestionId.length > 0) {
         await this.materialService.markQuestionPracticed(this.currentMaterialQuestionId, this.currentQuestionPracticeCount + 1)
         this.currentQuestionPracticeCount += 1
@@ -219,6 +225,75 @@ struct PracticePage {
     } finally {
       this.isProcessing = false
     }
+  }
+
+  private nextExamQuestion(allQuestions: MaterialQuestionAnswerRecord[]): MaterialQuestionAnswerRecord | null {
+    if (allQuestions.length === 0) {
+      return null
+    }
+    if (this.examId.length > 0) {
+      const savedExam = this.storage.getPracticeExamById(this.examId)
+      if (savedExam !== null && savedExam.status !== 'completed') {
+        this.activeExam = savedExam
+      }
+    }
+    if (this.activeExam === null || this.activeExam.status === 'completed') {
+      const now = Date.now().toString()
+      const exam = new PracticeExamData()
+      exam.id = 'exam_' + now
+      exam.status = 'in_progress'
+      exam.questionIds = this.shuffledQuestionIds(allQuestions)
+      exam.answeredQuestionIds = []
+      exam.materialIds = this.materialIdsFromQuestions(allQuestions)
+      exam.startedAt = now
+      exam.updatedAt = now
+      this.storage.upsertPracticeExam(exam)
+      this.activeExam = exam
+      this.examId = exam.id
+    }
+
+    const activeExam = this.activeExam
+    if (activeExam === null) {
+      return null
+    }
+    for (let index = 0; index < activeExam.questionIds.length; index++) {
+      const questionId = activeExam.questionIds[index]
+      if (activeExam.answeredQuestionIds.indexOf(questionId) >= 0) {
+        continue
+      }
+      const question = allQuestions.find((item: MaterialQuestionAnswerRecord) => item.id === questionId)
+      if (question !== undefined) {
+        return question
+      }
+    }
+
+    activeExam.status = 'completed'
+    activeExam.completedAt = Date.now().toString()
+    activeExam.updatedAt = activeExam.completedAt
+    this.storage.upsertPracticeExam(activeExam)
+    this.activeExam = activeExam
+    return null
+  }
+
+  private materialIdsFromQuestions(questions: MaterialQuestionAnswerRecord[]): string[] {
+    const ids: string[] = []
+    questions.forEach((question: MaterialQuestionAnswerRecord) => {
+      if (question.materialId.length > 0 && ids.indexOf(question.materialId) < 0) {
+        ids.push(question.materialId)
+      }
+    })
+    return ids
+  }
+
+  private shuffledQuestionIds(questions: MaterialQuestionAnswerRecord[]): string[] {
+    const ids = questions.map((question: MaterialQuestionAnswerRecord) => question.id)
+    for (let index = ids.length - 1; index > 0; index--) {
+      const targetIndex = Math.floor(Math.random() * (index + 1))
+      const current = ids[index]
+      ids[index] = ids[targetIndex]
+      ids[targetIndex] = current
+    }
+    return ids
   }
 
   private openMaterials(): void {

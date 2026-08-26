@@ -3,9 +3,18 @@ import { common } from '@kit.AbilityKit'
 import document from '@ohos.document'
 import { StorageService } from '../services/StorageService'
 import { MaterialIngestionService } from '../services/MaterialIngestionService'
-import { EvaluationData, SessionData, TopicData } from '../model/DataTypes'
+import { EvaluationData, PracticeExamData, SessionData, TopicData } from '../model/DataTypes'
 import { MaterialQuestionAnswerRecord, StudyMaterialRecord } from '../model/StudyMaterialRecord'
 
+class HomePracticeHistoryRecord {
+  id: string = ''
+  examId: string = ''
+  materialId: string = ''
+  fileName: string = ''
+  progressText: string = ''
+  latestSessionId: string = ''
+  latestPracticeAt: string = ''
+}
 
 @Entry
 @Component
@@ -21,15 +30,22 @@ struct HomePage {
   @State practicedQuestionCount: number = 0
   @State missedProblemCount: number = 0
   @State hasLatestPracticeRecord: boolean = false
+  @State hasIncompletePractice: boolean = false
+  @State incompletePracticeExamId: string = ''
+  @State incompletePracticeProgress: string = ''
+  @State incompletePracticeFiles: string = ''
+  @State incompletePracticeTime: string = ''
   @State latestPracticeQuestion: string = ''
   @State latestPracticeFileName: string = ''
   @State latestPracticeSessionId: string = ''
+  @State latestPracticeExamId: string = ''
   @State latestPracticeMaterialId: string = ''
   @State latestPracticeTime: string = ''
   @State uploadedMaterialName: string = ''
   @State uploadStatus: string = 'No materials uploaded yet'
   @State uploadSource: string = 'Upload slides, notes, papers, or PDF files.'
   @State recentMaterials: StudyMaterialRecord[] = []
+  @State historyRecords: HomePracticeHistoryRecord[] = []
   @State revealedMaterialId: string = ''
   @State materialSwipeOffset: number = 0
   @State materialSwipeStartOffset: number = 0
@@ -76,6 +92,7 @@ struct HomePage {
     if (latestSession !== undefined) {
       this.hasLatestPracticeRecord = true
       this.latestPracticeSessionId = latestSession.id
+      this.latestPracticeExamId = latestSession.examId ?? ''
       this.latestPracticeQuestion = latestSession.questionContent
       this.latestPracticeTime = this.formatHomeTime(latestSession.startedAt)
     } else {
@@ -83,8 +100,22 @@ struct HomePage {
       this.latestPracticeQuestion = ''
       this.latestPracticeFileName = ''
       this.latestPracticeSessionId = ''
+      this.latestPracticeExamId = ''
       this.latestPracticeMaterialId = ''
       this.latestPracticeTime = ''
+    }
+    const incompleteExam = this.storage.getLatestIncompletePracticeExam()
+    if (incompleteExam !== null) {
+      this.hasIncompletePractice = true
+      this.incompletePracticeExamId = incompleteExam.id
+      this.incompletePracticeProgress = incompleteExam.answeredQuestionIds.length.toString() + '/' + incompleteExam.questionIds.length.toString()
+      this.incompletePracticeTime = this.formatHomeTime(incompleteExam.updatedAt)
+    } else {
+      this.hasIncompletePractice = false
+      this.incompletePracticeExamId = ''
+      this.incompletePracticeProgress = ''
+      this.incompletePracticeFiles = ''
+      this.incompletePracticeTime = ''
     }
     this.topics = this.storage.getTopics()
   }
@@ -155,6 +186,11 @@ struct HomePage {
       const allQuestions = await service.listAllQuestions(1000)
       this.questionBankCount = allQuestions.length
       this.practicedQuestionCount = (await service.listPracticedQuestions(1000)).length
+      this.historyRecords = this.buildHomeHistoryRecords(allQuestions, allMaterials)
+      const incompleteExam = this.storage.getLatestIncompletePracticeExam()
+      if (incompleteExam !== null) {
+        this.incompletePracticeFiles = this.fileNamesForExam(incompleteExam, allMaterials)
+      }
       const latestSession = this.storage.getSessions().find((session: SessionData) => session.questionId.length > 0)
       if (latestSession !== undefined) {
         const latestQuestion = allQuestions.find((question: MaterialQuestionAnswerRecord) => question.id === latestSession.questionId)
@@ -197,6 +233,72 @@ struct HomePage {
       return material.extractionError
     }
     return 'Saved to app storage: ' + material.sandboxPath
+  }
+
+  private fileNamesForExam(exam: PracticeExamData, materials: StudyMaterialRecord[]): string {
+    const names: string[] = []
+    exam.materialIds.forEach((materialId: string) => {
+      const material = materials.find((item: StudyMaterialRecord) => item.id === materialId)
+      if (material !== undefined && names.indexOf(material.fileName) < 0) {
+        names.push(material.fileName)
+      }
+    })
+    if (names.length === 0) {
+      return 'Practice files'
+    }
+    if (names.length <= 2) {
+      return names.join(', ')
+    }
+    return names[0] + ', ' + names[1] + ' +' + (names.length - 2).toString()
+  }
+
+  private buildHomeHistoryRecords(questions: MaterialQuestionAnswerRecord[],
+    materials: StudyMaterialRecord[]): HomePracticeHistoryRecord[] {
+    const sessions = this.storage.getSessions().filter((session: SessionData) => session.questionId.length > 0)
+    const records: HomePracticeHistoryRecord[] = []
+    const exams = this.storage.getPracticeExams()
+
+    exams.forEach((exam: PracticeExamData) => {
+      if (exam.answeredQuestionIds.length === 0) {
+        return
+      }
+      const record = new HomePracticeHistoryRecord()
+      record.id = exam.id
+      record.examId = exam.id
+      record.fileName = this.fileNamesForExam(exam, materials)
+      record.progressText = exam.answeredQuestionIds.length.toString() + '/' + exam.questionIds.length.toString()
+      record.latestPracticeAt = exam.updatedAt
+      const latestSession = sessions.find((session: SessionData) => (session.examId ?? '') === exam.id)
+      record.latestSessionId = latestSession !== undefined ? latestSession.id : ''
+      records.push(record)
+    })
+
+    sessions.forEach((session: SessionData) => {
+      if ((session.examId ?? '').length > 0) {
+        return
+      }
+      const question = questions.find((item: MaterialQuestionAnswerRecord) => item.id === session.questionId)
+      if (question === undefined) {
+        return
+      }
+      const material = materials.find((item: StudyMaterialRecord) => item.id === question.materialId)
+      let record = records.find((item: HomePracticeHistoryRecord) => item.materialId === question.materialId)
+      if (record === undefined) {
+        record = new HomePracticeHistoryRecord()
+        record.id = question.materialId
+        record.materialId = question.materialId
+        record.fileName = material !== undefined ? material.fileName : 'Practice file'
+        record.progressText = 'Legacy'
+        records.push(record)
+      }
+      if (record.latestSessionId.length === 0 || Number(session.startedAt) > Number(record.latestPracticeAt)) {
+        record.latestSessionId = session.id
+        record.latestPracticeAt = session.startedAt
+      }
+    })
+
+    return records.sort((a: HomePracticeHistoryRecord, b: HomePracticeHistoryRecord) =>
+      Number(b.latestPracticeAt) - Number(a.latestPracticeAt))
   }
 
   private materialCardHeight(material: StudyMaterialRecord): number {
@@ -583,6 +685,59 @@ struct HomePage {
       } else {
         this.getUIContext().getRouter().pushUrl({ url: routeUrl })
       }
+    })
+  }
+
+  @Builder
+  private incompletePracticeCard() {
+    Column() {
+      Row() {
+        this.brandIcon('practice', 40)
+        Column() {
+          Text('Continue Practice')
+            .fontSize(16)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#111936')
+            .width('100%')
+          Text(this.incompletePracticeFiles.length > 0 ? this.incompletePracticeFiles : 'Practice files')
+            .fontSize(12)
+            .fontColor('#59627E')
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%')
+            .margin({ top: 4 })
+        }
+        .layoutWeight(1)
+        .margin({ left: 12 })
+        Text(this.incompletePracticeProgress)
+          .fontSize(14)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#1655FF')
+          .margin({ left: 8, right: 8 })
+        Image($r('app.media.ic_next_question'))
+          .width(22)
+          .height(22)
+          .objectFit(ImageFit.Contain)
+          .draggable(false)
+      }
+      .width('100%')
+      Text(this.incompletePracticeTime.length > 0 ? ('Last updated ' + this.incompletePracticeTime) : 'Resume unfinished questions')
+        .fontSize(12)
+        .fontColor('#68728D')
+        .width('100%')
+        .margin({ top: 10 })
+    }
+    .width('100%')
+    .padding(16)
+    .backgroundColor('#F6F9FF')
+    .borderRadius(12)
+    .border({ width: 1, color: '#C9D8FF' })
+    .margin({ bottom: 14 })
+    .onClick(() => {
+      this.getUIContext().getRouter().pushUrl({
+        url: 'pages/PracticePage',
+        params: { topicId: '', examId: this.incompletePracticeExamId }
+      })
     })
   }
 
@@ -1010,6 +1165,51 @@ struct HomePage {
   }
 
   @Builder
+  private homeHistoryRow(record: HomePracticeHistoryRecord) {
+    Row() {
+      this.brandIcon('materials', 42)
+      Column() {
+        Text(record.fileName)
+          .fontSize(15)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#111936')
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .width('100%')
+        Text('Practice Result' + (record.progressText.length > 0 ? (' · ' + record.progressText) : ''))
+          .fontSize(12)
+          .fontColor('#59627E')
+          .margin({ top: 4 })
+      }
+      .layoutWeight(1)
+      .margin({ left: 10 })
+      Text(this.formatHomeTime(record.latestPracticeAt))
+        .fontSize(12)
+        .fontColor('#59627E')
+        .margin({ left: 8 })
+      Image($r('app.media.ic_next_question'))
+        .width(22)
+        .height(22)
+        .objectFit(ImageFit.Contain)
+        .margin({ left: 8 })
+        .draggable(false)
+    }
+    .width('100%')
+    .height(74)
+    .padding(14)
+    .backgroundColor('#FFFFFF')
+    .borderRadius(12)
+    .border({ width: 1, color: '#E6EAF4' })
+    .margin({ bottom: 12 })
+    .onClick(() => {
+      this.getUIContext().getRouter().pushUrl({
+        url: 'pages/HistoryDetailPage',
+        params: { sessionId: record.latestSessionId, materialId: record.materialId, examId: record.examId }
+      })
+    })
+  }
+
+  @Builder
   private historyTab() {
     Scroll() {
       Column() {
@@ -1023,49 +1223,31 @@ struct HomePage {
         .width('100%')
         .margin({ top: 12, bottom: 8 })
 
-        Column() {
-          Row() {
-            this.brandIcon('materials', 42)
-            Row() {
-              Text(this.hasLatestPracticeRecord ? (this.latestPracticeFileName.length > 0 ? this.latestPracticeFileName : 'Practice file') : 'No practice records yet')
-                .fontSize(14)
-                .fontWeight(FontWeight.Bold)
-                .fontColor('#111936')
-                .maxLines(1)
-                .textOverflow({ overflow: TextOverflow.Ellipsis })
-                .layoutWeight(1)
-              Text(this.hasLatestPracticeRecord ? this.latestPracticeTime : 'Submit an answer in Practice')
-                .fontSize(12)
-                .fontColor('#59627E')
-                .margin({ left: 10 })
-            }
-            .layoutWeight(1)
-            .margin({ left: 8 })
-            Image($r('app.media.ic_next_question'))
-              .width(22)
-              .height(22)
+        if (this.historyRecords.length === 0) {
+          Column() {
+            Image($r('app.media.ic_history'))
+              .width(70)
+              .height(70)
               .objectFit(ImageFit.Contain)
-              .margin({ left: 8 })
-              .draggable(false)
+            Text('No practice records yet.')
+              .fontSize(15)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#111936')
+              .margin({ top: 12 })
+            Text('Practice results will appear here.')
+              .fontSize(13)
+              .fontColor('#59627E')
+              .lineHeight(20)
+              .textAlign(TextAlign.Center)
+              .margin({ top: 8 })
           }
           .width('100%')
+          .padding({ top: 36 })
+        } else {
+          ForEach(this.historyRecords, (record: HomePracticeHistoryRecord) => {
+            this.homeHistoryRow(record)
+          }, (record: HomePracticeHistoryRecord) => record.id)
         }
-        .width('100%')
-        .padding(16)
-        .backgroundColor('#FFFFFF')
-        .borderRadius(12)
-        .border({ width: 1, color: '#E6EAF4' })
-        .onClick(() => {
-          if (this.hasLatestPracticeRecord) {
-            this.getUIContext().getRouter().pushUrl({
-              url: 'pages/HistoryDetailPage',
-              params: { sessionId: this.latestPracticeSessionId, materialId: this.latestPracticeMaterialId }
-            })
-          } else {
-            this.getUIContext().getRouter().pushUrl({ url: 'pages/HistoryPage' })
-          }
-        })
-
       }
       .width('100%')
       .height('100%')
@@ -1095,6 +1277,10 @@ struct HomePage {
 
             Blank()
               .layoutWeight(1)
+
+            if (this.hasIncompletePractice) {
+              this.incompletePracticeCard()
+            }
 
             Column() {
               this.homeActionRow(
