@@ -54,6 +54,14 @@ struct HistoryPage {
     })
   }
 
+  onBackPress(): boolean {
+    if (this.selectedRecordId.length > 0) {
+      this.clearSelectedRecord()
+      return true
+    }
+    return false
+  }
+
   private async loadData(context: common.UIAbilityContext): Promise<void> {
     const service = new MaterialIngestionService(context)
     const sessions = this.storage.getSessions().filter((session: SessionData) => session.questionId.length > 0)
