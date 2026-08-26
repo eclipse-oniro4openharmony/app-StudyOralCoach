@@ -12,8 +12,24 @@ class HomePracticeHistoryRecord {
   materialId: string = ''
   fileName: string = ''
   progressText: string = ''
+  scoreText: string = ''
+  clarityScore: string = ''
+  structureScore: string = ''
+  completenessScore: string = ''
+  accuracyScore: string = ''
   latestSessionId: string = ''
   latestPracticeAt: string = ''
+  rows: HomePracticeHistoryQuestionResult[] = []
+}
+
+class HomePracticeHistoryQuestionResult {
+  id: string = ''
+  question: string = ''
+  correctAnswer: string = ''
+  practiced: boolean = false
+  userAnswer: string = ''
+  score: string = '0'
+  feedback: string = ''
 }
 
 @Entry
@@ -46,6 +62,15 @@ struct HomePage {
   @State uploadSource: string = 'Upload slides, notes, papers, or PDF files.'
   @State recentMaterials: StudyMaterialRecord[] = []
   @State historyRecords: HomePracticeHistoryRecord[] = []
+  @State selectedHistoryRecordId: string = ''
+  @State selectedHistoryFileName: string = ''
+  @State selectedHistoryProgressText: string = ''
+  @State selectedHistoryScoreText: string = ''
+  @State selectedHistoryClarityScore: string = ''
+  @State selectedHistoryStructureScore: string = ''
+  @State selectedHistoryCompletenessScore: string = ''
+  @State selectedHistoryAccuracyScore: string = ''
+  @State selectedHistoryRows: HomePracticeHistoryQuestionResult[] = []
   @State revealedMaterialId: string = ''
   @State materialSwipeOffset: number = 0
   @State materialSwipeStartOffset: number = 0
@@ -252,9 +277,27 @@ struct HomePage {
     return names[0] + ', ' + names[1] + ' +' + (names.length - 2).toString()
   }
 
+  private fileNamesForExamQuestions(exam: PracticeExamData, questions: MaterialQuestionAnswerRecord[],
+    materials: StudyMaterialRecord[]): string {
+    if (exam.materialIds.length > 0) {
+      return this.fileNamesForExam(exam, materials)
+    }
+    const materialIds: string[] = []
+    exam.questionIds.forEach((questionId: string) => {
+      const question = questions.find((item: MaterialQuestionAnswerRecord) => item.id === questionId)
+      if (question !== undefined && question.materialId.length > 0 && materialIds.indexOf(question.materialId) < 0) {
+        materialIds.push(question.materialId)
+      }
+    })
+    const fallbackExam = new PracticeExamData()
+    fallbackExam.materialIds = materialIds
+    return this.fileNamesForExam(fallbackExam, materials)
+  }
+
   private buildHomeHistoryRecords(questions: MaterialQuestionAnswerRecord[],
     materials: StudyMaterialRecord[]): HomePracticeHistoryRecord[] {
     const sessions = this.storage.getSessions().filter((session: SessionData) => session.questionId.length > 0)
+    const evaluations = this.storage.getEvaluations()
     const records: HomePracticeHistoryRecord[] = []
     const exams = this.storage.getPracticeExams()
 
@@ -265,11 +308,13 @@ struct HomePage {
       const record = new HomePracticeHistoryRecord()
       record.id = exam.id
       record.examId = exam.id
-      record.fileName = this.fileNamesForExam(exam, materials)
+      record.fileName = this.fileNamesForExamQuestions(exam, questions, materials)
       record.progressText = exam.answeredQuestionIds.length.toString() + '/' + exam.questionIds.length.toString()
       record.latestPracticeAt = exam.updatedAt
       const latestSession = sessions.find((session: SessionData) => (session.examId ?? '') === exam.id)
       record.latestSessionId = latestSession !== undefined ? latestSession.id : ''
+      this.applyHomeEvaluationToRecord(record, evaluations)
+      record.rows = this.buildHomeQuestionRowsForExam(exam, questions, sessions, evaluations)
       records.push(record)
     })
 
@@ -289,16 +334,101 @@ struct HomePage {
         record.materialId = question.materialId
         record.fileName = material !== undefined ? material.fileName : 'Practice file'
         record.progressText = 'Legacy'
+        record.rows = this.buildHomeQuestionRowsForMaterial(question.materialId, questions, sessions, evaluations)
         records.push(record)
       }
       if (record.latestSessionId.length === 0 || Number(session.startedAt) > Number(record.latestPracticeAt)) {
         record.latestSessionId = session.id
         record.latestPracticeAt = session.startedAt
+        this.applyHomeEvaluationToRecord(record, evaluations)
       }
     })
 
     return records.sort((a: HomePracticeHistoryRecord, b: HomePracticeHistoryRecord) =>
       Number(b.latestPracticeAt) - Number(a.latestPracticeAt))
+  }
+
+  private buildHomeQuestionRowsForExam(exam: PracticeExamData, questions: MaterialQuestionAnswerRecord[],
+    sessions: SessionData[], evaluations: EvaluationData[]): HomePracticeHistoryQuestionResult[] {
+    const rows: HomePracticeHistoryQuestionResult[] = []
+    exam.questionIds.forEach((questionId: string) => {
+      const question = questions.find((item: MaterialQuestionAnswerRecord) => item.id === questionId)
+      if (question !== undefined) {
+        rows.push(this.toHomeQuestionResult(question, sessions, evaluations, exam.id))
+      }
+    })
+    return rows
+  }
+
+  private buildHomeQuestionRowsForMaterial(materialId: string, questions: MaterialQuestionAnswerRecord[],
+    sessions: SessionData[], evaluations: EvaluationData[]): HomePracticeHistoryQuestionResult[] {
+    const rows: HomePracticeHistoryQuestionResult[] = []
+    questions
+      .filter((question: MaterialQuestionAnswerRecord) => question.materialId === materialId)
+      .forEach((question: MaterialQuestionAnswerRecord) => {
+        rows.push(this.toHomeQuestionResult(question, sessions, evaluations, ''))
+      })
+    return rows
+  }
+
+  private toHomeQuestionResult(question: MaterialQuestionAnswerRecord, sessions: SessionData[],
+    evaluations: EvaluationData[], examId: string): HomePracticeHistoryQuestionResult {
+    const row = new HomePracticeHistoryQuestionResult()
+    row.id = question.id
+    row.question = question.question
+    row.correctAnswer = question.answer
+    const practicedSession = examId.length > 0 ?
+      sessions.find((session: SessionData) => (session.examId ?? '') === examId && session.questionId === question.id) :
+      sessions.find((session: SessionData) => session.questionId === question.id)
+    if (practicedSession !== undefined) {
+      row.practiced = true
+      row.userAnswer = practicedSession.userAnswer
+      const evaluation = evaluations.find((item: EvaluationData) => item.sessionId === practicedSession.id)
+      if (evaluation !== undefined) {
+        row.score = evaluation.overallScore
+        row.feedback = evaluation.feedback
+      }
+    }
+    return row
+  }
+
+  private applyHomeEvaluationToRecord(record: HomePracticeHistoryRecord, evaluations: EvaluationData[]): void {
+    if (record.latestSessionId.length === 0) {
+      return
+    }
+    const evaluation = evaluations.find((item: EvaluationData) => item.sessionId === record.latestSessionId)
+    if (evaluation === undefined) {
+      return
+    }
+    record.scoreText = evaluation.overallScore
+    record.clarityScore = evaluation.clarityScore
+    record.structureScore = evaluation.structureScore
+    record.completenessScore = evaluation.completenessScore
+    record.accuracyScore = evaluation.accuracyScore
+  }
+
+  private selectHistoryRecord(record: HomePracticeHistoryRecord): void {
+    this.selectedHistoryRecordId = record.id
+    this.selectedHistoryFileName = record.fileName
+    this.selectedHistoryProgressText = record.progressText
+    this.selectedHistoryScoreText = record.scoreText
+    this.selectedHistoryClarityScore = record.clarityScore
+    this.selectedHistoryStructureScore = record.structureScore
+    this.selectedHistoryCompletenessScore = record.completenessScore
+    this.selectedHistoryAccuracyScore = record.accuracyScore
+    this.selectedHistoryRows = record.rows
+  }
+
+  private clearSelectedHistoryRecord(): void {
+    this.selectedHistoryRecordId = ''
+    this.selectedHistoryFileName = ''
+    this.selectedHistoryProgressText = ''
+    this.selectedHistoryScoreText = ''
+    this.selectedHistoryClarityScore = ''
+    this.selectedHistoryStructureScore = ''
+    this.selectedHistoryCompletenessScore = ''
+    this.selectedHistoryAccuracyScore = ''
+    this.selectedHistoryRows = []
   }
 
   private materialCardHeight(material: StudyMaterialRecord): number {
@@ -1202,28 +1332,188 @@ struct HomePage {
     .border({ width: 1, color: '#E6EAF4' })
     .margin({ bottom: 12 })
     .onClick(() => {
-      this.getUIContext().getRouter().pushUrl({
-        url: 'pages/HistoryDetailPage',
-        params: { sessionId: record.latestSessionId, materialId: record.materialId, examId: record.examId }
-      })
+      this.selectHistoryRecord(record)
     })
+  }
+
+  @Builder
+  private homeResultMetric(label: string, value: string) {
+    Row() {
+      Text(label)
+        .fontSize(12)
+        .fontColor('#111936')
+        .width(104)
+      Stack({ alignContent: Alignment.Start }) {
+        Column().height(6).width('100%').backgroundColor('#E8ECF7').borderRadius(3)
+        Column().height(6).width(value.length > 0 ? (value + '%') : '0%').backgroundColor('#3158F4').borderRadius(3)
+      }
+      .layoutWeight(1)
+      Text(value.length > 0 ? value : '-')
+        .fontSize(12)
+        .fontColor('#111936')
+        .textAlign(TextAlign.End)
+        .width(34)
+    }
+    .width('100%')
+    .margin({ top: 12 })
+  }
+
+  @Builder
+  private homeQuestionResultCard(row: HomePracticeHistoryQuestionResult) {
+    Column() {
+      Row() {
+        Text(row.practiced ? row.score + '/100' : 'Not practiced')
+          .fontSize(12)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(row.practiced ? (Number(row.score) < 60 ? '#F03A43' : '#1655FF') : '#59627E')
+          .padding({ left: 10, right: 10, top: 4, bottom: 4 })
+          .backgroundColor(row.practiced ? (Number(row.score) < 60 ? '#FFF1F1' : '#EEF3FF') : '#F4F6FA')
+          .borderRadius(10)
+        Blank()
+      }
+      .width('100%')
+
+      Text(row.question)
+        .fontSize(15)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#111936')
+        .lineHeight(22)
+        .width('100%')
+        .margin({ top: 10 })
+
+      if (row.practiced) {
+        Text('Your Answer')
+          .fontSize(12)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#59627E')
+          .width('100%')
+          .margin({ top: 12 })
+        Text(row.userAnswer.length > 0 ? row.userAnswer : 'No answer')
+          .fontSize(13)
+          .fontColor('#3F4966')
+          .lineHeight(20)
+          .width('100%')
+          .margin({ top: 6 })
+      }
+
+      Text('Correct Answer')
+        .fontSize(12)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#1655FF')
+        .width('100%')
+        .margin({ top: 12 })
+      Text(row.correctAnswer)
+        .fontSize(13)
+        .fontColor('#3F4966')
+        .lineHeight(20)
+        .width('100%')
+        .margin({ top: 6 })
+
+      if (row.feedback.length > 0) {
+        Text(row.feedback)
+          .fontSize(12)
+          .fontColor('#59627E')
+          .lineHeight(19)
+          .width('100%')
+          .margin({ top: 12 })
+      }
+    }
+    .width('100%')
+    .padding(16)
+    .backgroundColor('#FFFFFF')
+    .borderRadius(12)
+    .border({ width: 1, color: '#E6EAF4' })
+    .margin({ bottom: 12 })
+  }
+
+  @Builder
+  private selectedHistoryPracticeResult() {
+    Column() {
+      Row() {
+        Text('‹')
+          .fontSize(34)
+          .fontColor('#111936')
+          .onClick(() => {
+            this.clearSelectedHistoryRecord()
+          })
+        Text('Practice Result')
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#111936')
+          .layoutWeight(1)
+          .textAlign(TextAlign.Center)
+        Blank().width(34)
+      }
+      .height(58)
+
+      Column() {
+        Text('Result Evaluation')
+          .fontSize(14)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#59627E')
+          .width('100%')
+        Text(this.selectedHistoryScoreText.length > 0 ? (this.selectedHistoryScoreText + '/100') : 'Practice Result')
+          .fontSize(this.selectedHistoryScoreText.length > 0 ? 34 : 24)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(this.selectedHistoryScoreText.length > 0 ? '#1655FF' : '#111936')
+          .width('100%')
+          .margin({ top: 6 })
+        Text('Attachments: ' + (this.selectedHistoryFileName.length > 0 ? this.selectedHistoryFileName : 'Practice files'))
+          .fontSize(12)
+          .fontColor('#59627E')
+          .lineHeight(18)
+          .width('100%')
+          .margin({ top: 10 })
+        if (this.selectedHistoryProgressText.length > 0) {
+          Text('Progress: ' + this.selectedHistoryProgressText)
+            .fontSize(12)
+            .fontColor('#59627E')
+            .width('100%')
+            .margin({ top: 4 })
+        }
+        this.homeResultMetric('Clarity', this.selectedHistoryClarityScore)
+        this.homeResultMetric('Structure', this.selectedHistoryStructureScore)
+        this.homeResultMetric('Completeness', this.selectedHistoryCompletenessScore)
+        this.homeResultMetric('Accuracy', this.selectedHistoryAccuracyScore)
+      }
+      .width('100%')
+      .padding(16)
+      .backgroundColor('#FFFFFF')
+      .borderRadius(12)
+      .border({ width: 1, color: '#E6EAF4' })
+      .margin({ bottom: 16 })
+
+      Text('All questions in this exam')
+        .fontSize(13)
+        .fontColor('#59627E')
+        .width('100%')
+        .margin({ bottom: 12 })
+      ForEach(this.selectedHistoryRows, (row: HomePracticeHistoryQuestionResult) => {
+        this.homeQuestionResultCard(row)
+      }, (row: HomePracticeHistoryQuestionResult) => row.id)
+    }
+    .width('100%')
   }
 
   @Builder
   private historyTab() {
     Scroll() {
       Column() {
-        Row() {
-          Text('History')
-            .fontSize(22)
-            .fontWeight(FontWeight.Bold)
-            .fontColor('#080D2D')
-            .layoutWeight(1)
+        if (this.selectedHistoryRecordId.length > 0) {
+          this.selectedHistoryPracticeResult()
+        } else {
+          Row() {
+            Text('History')
+              .fontSize(22)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#080D2D')
+              .layoutWeight(1)
+          }
+          .width('100%')
+          .margin({ top: 12, bottom: 8 })
         }
-        .width('100%')
-        .margin({ top: 12, bottom: 8 })
 
-        if (this.historyRecords.length === 0) {
+        if (this.selectedHistoryRecordId.length === 0 && this.historyRecords.length === 0) {
           Column() {
             Image($r('app.media.ic_history'))
               .width(70)
@@ -1243,7 +1533,7 @@ struct HomePage {
           }
           .width('100%')
           .padding({ top: 36 })
-        } else {
+        } else if (this.selectedHistoryRecordId.length === 0) {
           ForEach(this.historyRecords, (record: HomePracticeHistoryRecord) => {
             this.homeHistoryRow(record)
           }, (record: HomePracticeHistoryRecord) => record.id)

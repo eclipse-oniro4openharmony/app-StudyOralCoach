@@ -1,6 +1,6 @@
 import { router } from '@kit.ArkUI'
 import { common } from '@kit.AbilityKit'
-import { EvaluationData, SessionData } from '../model/DataTypes'
+import { EvaluationData, PracticeExamData, SessionData } from '../model/DataTypes'
 import { MaterialQuestionAnswerRecord, StudyMaterialRecord } from '../model/StudyMaterialRecord'
 import { MaterialIngestionService } from '../services/MaterialIngestionService'
 import { StorageService } from '../services/StorageService'
@@ -23,6 +23,8 @@ struct HistoryDetailPage {
   @State materialId: string = ''
   @State fileName: string = 'Practice Result'
   @State attachmentNames: string = ''
+  @State progressText: string = ''
+  @State scoreText: string = ''
   @State selectedSession: SessionData = new SessionData()
   @State selectedEvaluation: EvaluationData = new EvaluationData()
   @State hasSelectedEvaluation: boolean = false
@@ -35,6 +37,20 @@ struct HistoryDetailPage {
     this.sessionId = params.sessionId ?? ''
     this.examId = params.examId ?? ''
     this.materialId = params.materialId ?? ''
+    this.attachmentNames = params.attachmentNames ?? ''
+    this.progressText = params.progressText ?? ''
+    this.scoreText = params.scoreText ?? ''
+    this.selectedEvaluation.overallScore = params.scoreText ?? '0'
+    this.selectedEvaluation.clarityScore = params.clarityScore ?? '0'
+    this.selectedEvaluation.structureScore = params.structureScore ?? '0'
+    this.selectedEvaluation.completenessScore = params.completenessScore ?? '0'
+    this.selectedEvaluation.accuracyScore = params.accuracyScore ?? '0'
+    if ((params.scoreText ?? '').length > 0) {
+      this.hasSelectedEvaluation = true
+    }
+    if (this.attachmentNames.length > 0) {
+      this.fileName = this.attachmentNames
+    }
     const context = getContext(this) as common.UIAbilityContext
     this.storage.init(context).then(async () => {
       await this.loadData(context)
@@ -42,17 +58,27 @@ struct HistoryDetailPage {
   }
 
   private async loadData(context: common.UIAbilityContext): Promise<void> {
+    let nextSessionId = this.sessionId
+    let nextSelectedSession = this.selectedSession
+    let nextSelectedEvaluation = this.selectedEvaluation
+    let nextHasSelectedEvaluation = this.hasSelectedEvaluation
+    let nextScoreText = this.scoreText
+    let nextFileName = this.fileName
+    let nextAttachmentNames = this.attachmentNames
+    let nextProgressText = this.progressText
+
     const sessions = this.storage.getSessions()
     const selected = this.sessionId.length > 0 ? sessions.find((session: SessionData) => session.id === this.sessionId) :
       sessions.find((session: SessionData) => (session.examId ?? '') === this.examId)
     if (selected !== undefined) {
-      this.selectedSession = selected
-      this.sessionId = selected.id
+      nextSelectedSession = selected
+      nextSessionId = selected.id
     }
-    const evaluation = this.storage.getEvaluationBySessionId(this.sessionId)
+    const evaluation = this.storage.getEvaluationBySessionId(nextSessionId)
     if (evaluation !== null) {
-      this.selectedEvaluation = evaluation
-      this.hasSelectedEvaluation = true
+      nextSelectedEvaluation = evaluation
+      nextHasSelectedEvaluation = true
+      nextScoreText = evaluation.overallScore
     }
 
     const evaluations = this.storage.getEvaluations()
@@ -62,8 +88,14 @@ struct HistoryDetailPage {
     const exam = this.examId.length > 0 ? this.storage.getPracticeExamById(this.examId) : null
     let questions: MaterialQuestionAnswerRecord[] = []
     if (exam !== null) {
-      this.attachmentNames = this.fileNamesForMaterialIds(exam.materialIds, materials)
-      this.fileName = this.attachmentNames
+      const examAttachmentNames = this.fileNamesForExam(exam, allQuestions, materials)
+      if (nextAttachmentNames.length === 0 && examAttachmentNames.length > 0) {
+        nextAttachmentNames = examAttachmentNames
+        nextFileName = examAttachmentNames
+      }
+      if (nextProgressText.length === 0) {
+        nextProgressText = exam.answeredQuestionIds.length.toString() + '/' + exam.questionIds.length.toString()
+      }
       exam.questionIds.forEach((questionId: string) => {
         const question = allQuestions.find((item: MaterialQuestionAnswerRecord) => item.id === questionId)
         if (question !== undefined) {
@@ -73,8 +105,8 @@ struct HistoryDetailPage {
     } else {
       const material = materials.find((item: StudyMaterialRecord) => item.id === this.materialId)
       if (material !== undefined) {
-        this.fileName = material.fileName
-        this.attachmentNames = material.fileName
+        nextFileName = material.fileName
+        nextAttachmentNames = material.fileName
       }
       questions = this.materialId.length > 0 ? await service.listQuestions(this.materialId) : allQuestions
     }
@@ -98,6 +130,14 @@ struct HistoryDetailPage {
       }
       resultRows.push(row)
     })
+    this.sessionId = nextSessionId
+    this.selectedSession = nextSelectedSession
+    this.selectedEvaluation = nextSelectedEvaluation
+    this.hasSelectedEvaluation = nextHasSelectedEvaluation
+    this.scoreText = nextScoreText
+    this.fileName = nextFileName
+    this.attachmentNames = nextAttachmentNames
+    this.progressText = nextProgressText
     this.rows = resultRows
     this.isLoading = false
   }
@@ -116,6 +156,32 @@ struct HistoryDetailPage {
     return names.join(', ')
   }
 
+  private fileNamesForExam(exam: PracticeExamData, questions: MaterialQuestionAnswerRecord[],
+    materials: StudyMaterialRecord[]): string {
+    let materialIds = exam.materialIds
+    if (materialIds.length === 0) {
+      materialIds = []
+      exam.questionIds.forEach((questionId: string) => {
+        const question = questions.find((item: MaterialQuestionAnswerRecord) => item.id === questionId)
+        if (question !== undefined && question.materialId.length > 0 && materialIds.indexOf(question.materialId) < 0) {
+          materialIds.push(question.materialId)
+        }
+      })
+    }
+    return this.fileNamesForMaterialIds(materialIds, materials)
+  }
+
+  private metricDisplayValue(value: string): string {
+    return value
+  }
+
+  private metricWidthValue(value: string): string {
+    if (!this.hasSelectedEvaluation || value.length === 0) {
+      return '0%'
+    }
+    return value + '%'
+  }
+
   @Builder
   private metric(label: string, value: string) {
     Row() {
@@ -125,10 +191,10 @@ struct HistoryDetailPage {
         .width(104)
       Stack({ alignContent: Alignment.Start }) {
         Column().height(6).width('100%').backgroundColor('#E8ECF7').borderRadius(3)
-        Column().height(6).width(value + '%').backgroundColor('#3158F4').borderRadius(3)
+        Column().height(6).width(this.metricWidthValue(value)).backgroundColor('#3158F4').borderRadius(3)
       }
       .layoutWeight(1)
-      Text(value)
+      Text(this.metricDisplayValue(value))
         .fontSize(12)
         .fontColor('#111936')
         .textAlign(TextAlign.End)
@@ -136,6 +202,57 @@ struct HistoryDetailPage {
     }
     .width('100%')
     .margin({ top: 12 })
+  }
+
+  @Builder
+  private resultSummaryCard() {
+    Column() {
+      Text('Result Evaluation')
+        .fontSize(14)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#59627E')
+        .width('100%')
+      if (this.scoreText.length > 0) {
+        Text(this.scoreText + '/100')
+          .fontSize(34)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#1655FF')
+          .width('100%')
+          .margin({ top: 6 })
+      } else {
+        Text('Practice Result')
+          .fontSize(24)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#111936')
+          .width('100%')
+          .margin({ top: 6 })
+      }
+      Text('Attachments: ' + (this.attachmentNames.length > 0 ? this.attachmentNames : this.fileName))
+        .fontSize(12)
+        .fontColor('#59627E')
+        .lineHeight(18)
+        .width('100%')
+        .margin({ top: 10 })
+      if (this.progressText.length > 0) {
+        Text('Progress: ' + this.progressText)
+          .fontSize(12)
+          .fontColor('#59627E')
+          .width('100%')
+          .margin({ top: 4 })
+      }
+      if (this.hasSelectedEvaluation) {
+        this.metric('Clarity', this.selectedEvaluation.clarityScore)
+        this.metric('Structure', this.selectedEvaluation.structureScore)
+        this.metric('Completeness', this.selectedEvaluation.completenessScore)
+        this.metric('Accuracy', this.selectedEvaluation.accuracyScore)
+      }
+    }
+    .width('100%')
+    .padding(16)
+    .backgroundColor('#FFFFFF')
+    .borderRadius(12)
+    .border({ width: 1, color: '#E6EAF4' })
+    .margin({ bottom: 16 })
   }
 
   @Builder
@@ -218,55 +335,17 @@ struct HistoryDetailPage {
 
       Scroll() {
         Column() {
-          if (this.hasSelectedEvaluation) {
-            Column() {
-              Text(this.selectedEvaluation.overallScore + '/100')
-                .fontSize(34)
-                .fontWeight(FontWeight.Bold)
-                .fontColor('#1655FF')
-                .width('100%')
-              Text(this.fileName)
-                .fontSize(14)
-                .fontWeight(FontWeight.Bold)
-                .fontColor('#111936')
-                .lineHeight(21)
-                .width('100%')
-                .margin({ top: 10 })
-              Text('Attachments: ' + (this.attachmentNames.length > 0 ? this.attachmentNames : this.fileName))
-                .fontSize(12)
-                .fontColor('#59627E')
-                .lineHeight(18)
-                .width('100%')
-                .margin({ top: 6 })
-              this.metric('Clarity', this.selectedEvaluation.clarityScore)
-              this.metric('Structure', this.selectedEvaluation.structureScore)
-              this.metric('Completeness', this.selectedEvaluation.completenessScore)
-              this.metric('Accuracy', this.selectedEvaluation.accuracyScore)
-            }
-            .width('100%')
-            .padding(16)
-            .backgroundColor('#FFFFFF')
-            .borderRadius(12)
-            .border({ width: 1, color: '#E6EAF4' })
-            .margin({ bottom: 16 })
-          }
+          this.resultSummaryCard()
 
-          if (this.isLoading) {
-            Text('Loading results...')
-              .fontSize(14)
-              .fontColor('#59627E')
-              .width('100%')
-              .textAlign(TextAlign.Center)
-              .margin({ top: 32 })
-          } else if (this.rows.length === 0) {
+          if (!this.isLoading && this.rows.length === 0) {
             Image($r('app.media.ic_materials')).width(64).height(64).objectFit(ImageFit.Contain).margin({ top: 28 })
             Text('No question bank found.')
               .fontSize(15)
               .fontWeight(FontWeight.Bold)
               .fontColor('#111936')
               .margin({ top: 12 })
-          } else {
-            Text('All questions in this file')
+          } else if (!this.isLoading) {
+            Text(this.examId.length > 0 ? 'All questions in this exam' : 'All questions in this file')
               .fontSize(13)
               .fontColor('#59627E')
               .width('100%')
@@ -285,5 +364,10 @@ struct HistoryDetailPage {
     .width('100%')
     .height('100%')
     .backgroundColor('#FDFEFF')
+  }
+
+  pageTransition() {
+    PageTransitionEnter({ type: RouteType.None, duration: 0 })
+    PageTransitionExit({ type: RouteType.None, duration: 0 })
   }
 }
