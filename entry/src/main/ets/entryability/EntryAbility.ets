@@ -1,6 +1,7 @@
 import { AbilityConstant, ConfigurationConstant, UIAbility, Want, abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
+import { BusinessError } from '@kit.BasicServicesKit';
 
 const DOMAIN = 0x0000;
 
@@ -42,7 +43,28 @@ export default class EntryAbility extends UIAbility {
         return;
       }
       hilog.info(DOMAIN, 'testTag', 'Succeeded in loading the content.');
+      this.enableImmersiveWindow(windowStage);
     });
+  }
+
+  private async enableImmersiveWindow(windowStage: window.WindowStage): Promise<void> {
+    try {
+      const mainWindow = windowStage.getMainWindowSync();
+      await mainWindow.setWindowLayoutFullScreen(true);
+      await mainWindow.setWindowSystemBarProperties({
+        statusBarColor: '#00000000',
+        navigationBarColor: '#00000000',
+        statusBarContentColor: '#FF111936',
+        navigationBarContentColor: '#FF111936'
+      });
+      const systemAvoidArea = mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
+      AppStorage.setOrCreate('immersiveSystemTopInsetPx', systemAvoidArea.topRect.height);
+      hilog.info(DOMAIN, 'testTag', 'Immersive window layout enabled.');
+    } catch (err) {
+      const error = err as BusinessError;
+      hilog.error(DOMAIN, 'testTag', 'Failed to enable immersive window layout. Cause: %{public}s',
+        JSON.stringify(error));
+    }
   }
 
   onWindowStageDestroy(): void {
