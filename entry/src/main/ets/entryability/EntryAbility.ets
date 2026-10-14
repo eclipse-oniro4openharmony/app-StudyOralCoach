@@ -59,6 +59,9 @@ export default class EntryAbility extends UIAbility {
       });
       const systemAvoidArea = mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
       AppStorage.setOrCreate('immersiveSystemTopInsetPx', systemAvoidArea.topRect.height);
+      const navigationAvoidArea = mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
+      AppStorage.setOrCreate('immersiveNavigationIndicatorHeightVp',
+        mainWindow.getUIContext().px2vp(navigationAvoidArea.bottomRect.height));
       hilog.info(DOMAIN, 'testTag', 'Immersive window layout enabled.');
     } catch (err) {
       const error = err as BusinessError;
