@@ -1,4 +1,6 @@
 import { promptAction, router } from '@kit.ArkUI'
+import { hdsMaterial } from '@kit.UIDesignKit'
+import { HdsTabs } from '@hms.hds.hdsBaseComponent'
 import { common } from '@kit.AbilityKit'
 import document from '@ohos.document'
 import { StorageService } from '../services/StorageService'
@@ -41,6 +43,7 @@ struct HomePage {
   @State weakTopics: string[] = []
   @State topics: TopicData[] = []
   @State currentTab: number = 0
+  @StorageProp('immersiveSystemTopInsetPx') immersiveSystemTopInsetPx: number = 0
   @State materialCount: number = 0
   @State questionBankCount: number = 0
   @State practicedQuestionCount: number = 0
@@ -987,36 +990,46 @@ struct HomePage {
   }
 
   @Builder
-  private bottomNav() {
-    Row() {
-      this.navItem('home', 'Home', 0)
-      this.navItem('practice', 'Practice', 1)
-      this.navItem('materials', 'Materials', 2)
-      this.navItem('history', 'History', 3)
-    }
-    .width('100%')
-    .height(72)
-    .padding({ left: 10, right: 10, bottom: 6 })
-    .backgroundColor('#FFFFFF')
-    .border({ width: { top: 1 }, color: '#EEF1F7' })
-  }
-
-  @Builder
   private navItem(iconName: string, label: string, index: number) {
     Column() {
-      this.brandIcon(iconName, 30, this.currentTab !== index)
+      if (iconName === 'home') {
+        Image($r('app.media.ic_home'))
+          .width(24)
+          .height(24)
+          .objectFit(ImageFit.Contain)
+          .opacity(this.currentTab === index ? 1 : 0.55)
+      } else if (iconName === 'practice') {
+        Image($r('app.media.ic_practice'))
+          .width(24)
+          .height(24)
+          .objectFit(ImageFit.Contain)
+          .opacity(this.currentTab === index ? 1 : 0.55)
+      } else if (iconName === 'materials') {
+        Image($r('app.media.ic_materials'))
+          .width(24)
+          .height(24)
+          .objectFit(ImageFit.Contain)
+          .opacity(this.currentTab === index ? 1 : 0.55)
+      } else {
+        Image($r('app.media.ic_history'))
+          .width(24)
+          .height(24)
+          .objectFit(ImageFit.Contain)
+          .opacity(this.currentTab === index ? 1 : 0.55)
+      }
       Text(label)
         .fontSize(10)
         .fontColor(this.currentTab === index ? '#1655FF' : '#5E6884')
         .fontWeight(this.currentTab === index ? FontWeight.Bold : FontWeight.Normal)
         .margin({ top: 2 })
     }
-    .layoutWeight(1)
-    .height(58)
+    .width('100%')
+    .height('100%')
     .justifyContent(FlexAlign.Center)
-    .onClick(() => {
-      this.currentTab = index
-    })
+  }
+
+  private immersiveTopInsetVp(): number {
+    return this.getUIContext().px2vp(this.immersiveSystemTopInsetPx) + 8
   }
 
   @Builder
@@ -1134,7 +1147,7 @@ struct HomePage {
             .layoutWeight(1)
         }
         .width('100%')
-        .margin({ top: 12, bottom: 8 })
+        .margin({ top: this.immersiveTopInsetVp(), bottom: 8 })
 
         Column() {
           this.practiceStartButton()
@@ -1150,7 +1163,8 @@ struct HomePage {
       .justifyContent(FlexAlign.Start)
       .padding({ left: 18, right: 18, bottom: 22 })
     }
-    .layoutWeight(1)
+    .width('100%')
+    .height('100%')
     .scrollBar(BarState.Off)
   }
 
@@ -1264,7 +1278,7 @@ struct HomePage {
         }
         .width('100%')
         .padding(20)
-        .margin({ top: 12 })
+        .margin({ top: this.immersiveTopInsetVp() })
         .backgroundColor('#FFFFFF')
         .borderRadius(12)
         .border({ width: 1, color: '#E6EAF4' })
@@ -1307,8 +1321,8 @@ struct HomePage {
       .justifyContent(FlexAlign.Start)
       .padding({ left: 18, right: 18, bottom: 24 })
     }
-    .layoutWeight(1)
     .width('100%')
+    .height('100%')
     .scrollBar(BarState.Off)
   }
 
@@ -1528,7 +1542,7 @@ struct HomePage {
               .layoutWeight(1)
           }
           .width('100%')
-          .margin({ top: 12, bottom: 8 })
+          .margin({ top: this.immersiveTopInsetVp(), bottom: 8 })
         }
 
         if (this.selectedHistoryRecordId.length === 0 && this.historyRecords.length === 0) {
@@ -1562,109 +1576,146 @@ struct HomePage {
       .justifyContent(FlexAlign.Start)
       .padding({ left: 18, right: 18, bottom: 22 })
     }
-    .layoutWeight(1)
+    .width('100%')
+    .height('100%')
+    .scrollBar(BarState.Off)
+  }
+
+  @Builder
+  private homeTab() {
+    Scroll() {
+      Column() {
+        Row() {
+          Text('Home')
+            .fontSize(22)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#080D2D')
+            .layoutWeight(1)
+        }
+        .width('100%')
+        .margin({ top: this.immersiveTopInsetVp(), bottom: 8 })
+
+        this.homeBannerSwiper()
+
+        Blank()
+          .layoutWeight(1)
+
+        if (this.hasIncompletePractice) {
+          this.incompletePracticeCard()
+        }
+
+        Column() {
+          this.homeActionRow(
+            'Start Practice',
+            '',
+            'Practice uploaded question bank',
+            'practice',
+            'pages/PracticePage',
+            'practice',
+            true
+          )
+          this.homeActionRow(
+            'Upload Materials',
+            '',
+            'Add documents and generate Q&A',
+            'upload',
+            '',
+            'upload',
+            true
+          )
+          this.homeActionRow(
+            'Question Bank',
+            '',
+            'Prepared questions and answers',
+            'materials',
+            'pages/QuestionBankPage',
+            '',
+            true
+          )
+          this.homeActionRow(
+            'Missed problems',
+            '',
+            'Wrong answers from practice',
+            'target',
+            'pages/WeakTopicsPage',
+            '',
+            true
+          )
+          this.homeActionRow(
+            'Practiced',
+            '',
+            'Questions already practiced',
+            'history',
+            'pages/PracticeStatsPage',
+            '',
+            false
+          )
+        }
+        .width('100%')
+        .padding({ left: 14, right: 14, top: 6, bottom: 6 })
+        .backgroundColor('#FFFFFF')
+        .borderRadius(12)
+        .border({ width: 1, color: '#E6EAF4' })
+
+        Blank()
+          .layoutWeight(1)
+      }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Start)
+      .alignItems(HorizontalAlign.Start)
+      .padding({ left: 18, right: 18, bottom: 22 })
+    }
+    .width('100%')
+    .height('100%')
     .scrollBar(BarState.Off)
   }
 
   build() {
-    Column() {
-      if (this.currentTab === 0) {
-        Scroll() {
-          Column() {
-            Row() {
-              Text('Home')
-                .fontSize(22)
-                .fontWeight(FontWeight.Bold)
-                .fontColor('#080D2D')
-                .layoutWeight(1)
-            }
-            .width('100%')
-            .margin({ top: 12, bottom: 8 })
+    HdsTabs({
+      barPosition: BarPosition.End,
+      index: this.currentTab
+    }) {
+      TabContent() {
+        this.homeTab()
+      }
+      .tabBar(this.navItem('home', 'Home', 0))
 
-            this.homeBannerSwiper()
-
-            Blank()
-              .layoutWeight(1)
-
-            if (this.hasIncompletePractice) {
-              this.incompletePracticeCard()
-            }
-
-            Column() {
-              this.homeActionRow(
-                'Start Practice',
-                '',
-                'Practice uploaded question bank',
-                'practice',
-                'pages/PracticePage',
-                'practice',
-                true
-              )
-              this.homeActionRow(
-                'Upload Materials',
-                '',
-                'Add documents and generate Q&A',
-                'upload',
-                '',
-                'upload',
-                true
-              )
-              this.homeActionRow(
-                'Question Bank',
-                '',
-                'Prepared questions and answers',
-                'materials',
-                'pages/QuestionBankPage',
-                '',
-                true
-              )
-              this.homeActionRow(
-                'Missed problems',
-                '',
-                'Wrong answers from practice',
-                'target',
-                'pages/WeakTopicsPage',
-                '',
-                true
-              )
-              this.homeActionRow(
-                'Practiced',
-                '',
-                'Questions already practiced',
-                'history',
-                'pages/PracticeStatsPage',
-                '',
-                false
-              )
-            }
-            .width('100%')
-            .padding({ left: 14, right: 14, top: 6, bottom: 6 })
-            .backgroundColor('#FFFFFF')
-            .borderRadius(12)
-            .border({ width: 1, color: '#E6EAF4' })
-
-            Blank()
-              .layoutWeight(1)
-          }
-          .width('100%')
-          .height('100%')
-          .justifyContent(FlexAlign.Start)
-          .alignItems(HorizontalAlign.Start)
-          .padding({ left: 18, right: 18, bottom: 22 })
-        }
-        .layoutWeight(1)
-        .width('100%')
-        .scrollBar(BarState.Off)
-      } else if (this.currentTab === 1) {
+      TabContent() {
         this.practiceTab()
-      } else if (this.currentTab === 2) {
+      }
+      .tabBar(this.navItem('practice', 'Practice', 1))
+
+      TabContent() {
         this.materialsTab()
-      } else {
+      }
+      .tabBar(this.navItem('materials', 'Materials', 2))
+
+      TabContent() {
         this.historyTab()
       }
-
-      this.bottomNav()
+      .tabBar(this.navItem('history', 'History', 3))
     }
+    .barOverlap(true)
+    .vertical(false)
+    .barFloatingStyle({
+      barWidth: {
+        smallWidth: 328,
+        mediumWidth: 328,
+        largeWidth: 328
+      },
+      barBottomMargin: 16,
+      systemMaterialEffect: {
+        materialType: hdsMaterial.MaterialType.IMMERSIVE,
+        materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+      },
+      barOpacity: 1
+    })
+    .barHeight(56)
+    .onChange((index: number) => {
+      this.currentTab = index
+    })
+    .scrollable(false)
     .width('100%')
     .height('100%')
     .backgroundColor('#FDFEFF')
