@@ -1,6 +1,5 @@
-import { promptAction, router } from '@kit.ArkUI'
-import { hdsMaterial } from '@kit.UIDesignKit'
-import { HdsTabs } from '@hms.hds.hdsBaseComponent'
+import { promptAction, router, SymbolGlyphModifier } from '@kit.ArkUI'
+import { hdsMaterial, HdsBarStyle, HdsTabs, HdsTabsController, HdsTabsModifier } from '@kit.UIDesignKit'
 import { common } from '@kit.AbilityKit'
 import document from '@ohos.document'
 import { StorageService } from '../services/StorageService'
@@ -43,7 +42,10 @@ struct HomePage {
   @State weakTopics: string[] = []
   @State topics: TopicData[] = []
   @State currentTab: number = 0
+  @State isAdaptiveMiniBarExpanded: boolean = false
   @StorageProp('immersiveSystemTopInsetPx') immersiveSystemTopInsetPx: number = 0
+  @StorageProp('immersiveNavigationIndicatorHeightVp') @Watch('configureHdsTabs') navigationIndicatorHeightVp: number = 16
+  @State hdsTabsModifier: HdsTabsModifier = new HdsTabsModifier()
   @State materialCount: number = 0
   @State questionBankCount: number = 0
   @State practicedQuestionCount: number = 0
@@ -80,6 +82,7 @@ struct HomePage {
   @State isPracticeHold: boolean = false
   private storage: StorageService = StorageService.getInstance()
   private homeBannerController: SwiperController = new SwiperController()
+  private hdsTabsController: HdsTabsController = new HdsTabsController()
 
   aboutToAppear(): void {
     const routeParams = router.getParams()
@@ -97,6 +100,7 @@ struct HomePage {
     } else {
       this.currentTab = 0
     }
+    this.configureHdsTabs()
     const context = getContext(this) as common.UIAbilityContext
     this.storage.init(context).then(() => {
       this.loadData()
@@ -120,6 +124,13 @@ struct HomePage {
       return true
     }
     return false
+  }
+
+  configureHdsTabs(): void {
+    this.hdsTabsModifier
+      .vertical(false)
+      .barPosition(BarPosition.End)
+      .barHeight(56)
   }
 
   loadData(): void {
@@ -989,43 +1000,58 @@ struct HomePage {
     })
   }
 
+  private bottomTabBarStyle(icon: Resource, label: string): BottomTabBarStyle {
+    const normalGlyph = new SymbolGlyphModifier(icon)
+      .renderingStrategy(SymbolRenderingStrategy.SINGLE)
+      .fontColor([$r('sys.color.icon_primary')])
+    const selectedGlyph = new SymbolGlyphModifier(icon)
+      .renderingStrategy(SymbolRenderingStrategy.SINGLE)
+    return BottomTabBarStyle.of({
+      normal: normalGlyph,
+      selected: selectedGlyph
+    }, label)
+      .labelStyle({ unselectedColor: $r('sys.color.font_primary') })
+  }
+
   @Builder
-  private navItem(iconName: string, label: string, index: number) {
-    Column() {
-      if (iconName === 'home') {
-        Image($r('app.media.ic_home'))
-          .width(24)
-          .height(24)
-          .objectFit(ImageFit.Contain)
-          .opacity(this.currentTab === index ? 1 : 0.55)
-      } else if (iconName === 'practice') {
-        Image($r('app.media.ic_practice'))
-          .width(24)
-          .height(24)
-          .objectFit(ImageFit.Contain)
-          .opacity(this.currentTab === index ? 1 : 0.55)
-      } else if (iconName === 'materials') {
-        Image($r('app.media.ic_materials'))
-          .width(24)
-          .height(24)
-          .objectFit(ImageFit.Contain)
-          .opacity(this.currentTab === index ? 1 : 0.55)
-      } else {
-        Image($r('app.media.ic_history'))
-          .width(24)
-          .height(24)
-          .objectFit(ImageFit.Contain)
-          .opacity(this.currentTab === index ? 1 : 0.55)
+  private adaptiveMiniBar() {
+    Row() {
+      Column() {
+        Text('HMS')
+          .fontSize(13)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Color.White)
       }
-      Text(label)
-        .fontSize(10)
-        .fontColor(this.currentTab === index ? '#1655FF' : '#5E6884')
-        .fontWeight(this.currentTab === index ? FontWeight.Bold : FontWeight.Normal)
-        .margin({ top: 2 })
+      .width(64)
+      .height(64)
+      .justifyContent(FlexAlign.Center)
+      .backgroundColor('#174FE5')
+      .borderRadius(32)
+      .border({ width: 1, color: '#99FFFFFF' })
+      .shadow({ radius: 12, color: '#551442C8', offsetY: 3 })
+      .margin({ left: 4, right: 4 })
+
+      Text('StudyOral Coach')
+        .fontSize(14)
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('sys.color.font_primary'))
+        .layoutWeight(1)
+
+      Column() {
+        Image($r('sys.media.ohos_ic_public_pause'))
+          .width(40)
+          .height(40)
+          .borderRadius(40)
+      }
+      .width(48)
+      .height(48)
+      .justifyContent(FlexAlign.Center)
     }
-    .width('100%')
-    .height('100%')
-    .justifyContent(FlexAlign.Center)
+    .height(56)
+    .onClick(() => {
+      this.isAdaptiveMiniBarExpanded = !this.isAdaptiveMiniBarExpanded
+      this.hdsTabsController.applyMiniBarStyle(this.isAdaptiveMiniBarExpanded ? HdsBarStyle.EXPAND : HdsBarStyle.COLLAPSE)
+    })
   }
 
   private immersiveTopInsetVp(): number {
@@ -1672,52 +1698,59 @@ struct HomePage {
   }
 
   build() {
-    HdsTabs({
-      barPosition: BarPosition.End,
-      index: this.currentTab
-    }) {
-      TabContent() {
-        this.homeTab()
-      }
-      .tabBar(this.navItem('home', 'Home', 0))
+    Column() {
+      HdsTabs({
+        controller: this.hdsTabsController,
+        index: this.currentTab
+      }) {
+        TabContent() {
+          this.homeTab()
+        }
+        .tabBar(this.bottomTabBarStyle($r('sys.symbol.house_fill'), 'Home'))
 
-      TabContent() {
-        this.practiceTab()
-      }
-      .tabBar(this.navItem('practice', 'Practice', 1))
+        TabContent() {
+          this.practiceTab()
+        }
+        .tabBar(this.bottomTabBarStyle($r('sys.symbol.discover_fill'), 'Practice'))
 
-      TabContent() {
-        this.materialsTab()
-      }
-      .tabBar(this.navItem('materials', 'Materials', 2))
+        TabContent() {
+          this.materialsTab()
+        }
+        .tabBar(this.bottomTabBarStyle($r('sys.symbol.archivebox_fill'), 'Materials'))
 
-      TabContent() {
-        this.historyTab()
+        TabContent() {
+          this.historyTab()
+        }
+        .tabBar(this.bottomTabBarStyle($r('sys.symbol.arrow_counterclockwise_clock'), 'History'))
       }
-      .tabBar(this.navItem('history', 'History', 3))
+      .barPosition(BarPosition.End)
+      .barOverlap(true)
+      .vertical(false)
+      .animationDuration(0)
+      .attributeModifier(this.hdsTabsModifier)
+      .barFloatingStyle({
+        adaptToHandedness: true,
+        barBottomMargin: this.navigationIndicatorHeightVp > 0 ? this.navigationIndicatorHeightVp : 16,
+        miniBar: {
+          miniBarBuilder: () => this.adaptiveMiniBar(),
+          miniBarStyle: this.isAdaptiveMiniBarExpanded ? HdsBarStyle.EXPAND : HdsBarStyle.COLLAPSE
+        },
+        systemMaterialEffect: {
+          materialType: hdsMaterial.MaterialType.IMMERSIVE,
+          materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+        }
+      })
+      .onChange((index: number) => {
+        this.currentTab = index
+        this.isAdaptiveMiniBarExpanded = false
+        this.hdsTabsController.applyMiniBarStyle(HdsBarStyle.COLLAPSE)
+      })
+      .scrollable(false)
+      .width('100%')
+      .height('100%')
+      .backgroundColor('#FDFEFF')
     }
-    .barOverlap(true)
-    .vertical(false)
-    .barFloatingStyle({
-      barWidth: {
-        smallWidth: 328,
-        mediumWidth: 328,
-        largeWidth: 328
-      },
-      barBottomMargin: 16,
-      systemMaterialEffect: {
-        materialType: hdsMaterial.MaterialType.IMMERSIVE,
-        materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
-      },
-      barOpacity: 1
-    })
-    .barHeight(56)
-    .onChange((index: number) => {
-      this.currentTab = index
-    })
-    .scrollable(false)
     .width('100%')
     .height('100%')
-    .backgroundColor('#FDFEFF')
   }
 }
