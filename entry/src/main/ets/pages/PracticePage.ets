@@ -35,6 +35,7 @@ struct PracticePage {
   @State isRecording: boolean = false
   @State speechStatus: string = 'Tap to answer aloud'
   @State questionProgressText: string = '0/0'
+  @State practiceDurationSeconds: number = 0
   private storage: StorageService = StorageService.getInstance()
   private ai: AiService = AiService.getInstance()
   private materialService: MaterialIngestionService | null = null
@@ -42,6 +43,9 @@ struct PracticePage {
   private currentQuestionPracticeCount: number = 0
   private currentPracticeIndex: number = 0
   private activeExam: PracticeExamData | null = null
+  private practiceTimerId: number = -1
+  private practiceTimerStartedAt: number = 0
+  private practiceTimerBaseSeconds: number = 0
 
   aboutToAppear(): void {
     const params = router.getParams() as Record<string, string>
@@ -52,6 +56,10 @@ struct PracticePage {
     this.storage.init(context).then(() => {
       this.startSession()
     })
+  }
+
+  aboutToDisappear(): void {
+    this.stopPracticeTimer()
   }
 
   async startSession(): Promise<void> {
@@ -124,6 +132,7 @@ struct PracticePage {
       this.hasPracticeQuestion = true
     }
     this.currentQuestion = question
+    this.startPracticeTimer()
     const questionMessage = new ChatMessageData()
     questionMessage.id = (Date.now() + 1).toString()
     questionMessage.sessionId = this.sessionId
@@ -211,8 +220,12 @@ struct PracticePage {
       sessionObj.endedAt = Date.now().toString()
       this.storage.addSession(sessionObj)
       if (this.examId.length > 0 && this.currentMaterialQuestionId.length > 0) {
+        this.persistPracticeDuration()
         const updatedExam = this.storage.markPracticeExamAnswered(this.examId, this.currentMaterialQuestionId)
         this.activeExam = updatedExam
+        if (updatedExam !== null && updatedExam.status === 'completed') {
+          this.stopPracticeTimer()
+        }
       }
       if (this.materialService !== null && this.currentMaterialQuestionId.length > 0) {
         await this.materialService.markQuestionPracticed(this.currentMaterialQuestionId, this.currentQuestionPracticeCount + 1)
@@ -294,6 +307,55 @@ struct PracticePage {
       ids[targetIndex] = current
     }
     return ids
+  }
+
+  private startPracticeTimer(): void {
+    if (this.practiceTimerId !== -1) {
+      return
+    }
+    this.practiceTimerBaseSeconds = this.activeExam?.durationSeconds ?? 0
+    this.practiceDurationSeconds = this.practiceTimerBaseSeconds
+    this.practiceTimerStartedAt = Date.now()
+    this.updatePracticeTimer()
+    this.practiceTimerId = setInterval(() => {
+      this.updatePracticeTimer()
+    }, 1000)
+  }
+
+  private updatePracticeTimer(): void {
+    if (this.practiceTimerStartedAt <= 0) {
+      return
+    }
+    const elapsedSeconds = Math.floor((Date.now() - this.practiceTimerStartedAt) / 1000)
+    this.practiceDurationSeconds = this.practiceTimerBaseSeconds + elapsedSeconds
+  }
+
+  private persistPracticeDuration(): void {
+    this.updatePracticeTimer()
+    if (this.activeExam !== null) {
+      this.activeExam.durationSeconds = this.practiceDurationSeconds
+      this.activeExam.updatedAt = Date.now().toString()
+      this.storage.upsertPracticeExam(this.activeExam)
+    }
+  }
+
+  private stopPracticeTimer(): void {
+    if (this.practiceTimerId === -1 && this.practiceTimerStartedAt === 0) {
+      return
+    }
+    if (this.practiceTimerId !== -1) {
+      clearInterval(this.practiceTimerId)
+      this.practiceTimerId = -1
+    }
+    this.persistPracticeDuration()
+    this.practiceTimerStartedAt = 0
+  }
+
+  private formatPracticeDuration(totalSeconds: number): string {
+    const safeSeconds = Math.max(0, Math.floor(totalSeconds))
+    const minutes = Math.floor(safeSeconds / 60)
+    const seconds = safeSeconds % 60
+    return minutes.toString().padStart(2, '0') + ':' + seconds.toString().padStart(2, '0')
   }
 
   private openMaterials(): void {
@@ -428,6 +490,10 @@ struct PracticePage {
           .backgroundColor('#EEF3FF')
           .borderRadius(16)
           Blank()
+          Text('Time ' + this.formatPracticeDuration(this.practiceDurationSeconds))
+            .fontSize(12)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#59627E')
           Text(this.currentQuestionPracticeCount > 0 ? ('Practiced ' + this.currentQuestionPracticeCount.toString() + 'x') : 'Question')
             .fontSize(12)
             .fontWeight(FontWeight.Bold)

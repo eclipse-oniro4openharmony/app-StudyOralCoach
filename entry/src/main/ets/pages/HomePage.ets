@@ -1,5 +1,5 @@
 import { promptAction, router, SymbolGlyphModifier } from '@kit.ArkUI'
-import { hdsMaterial, HdsBarStyle, HdsTabs, HdsTabsController, HdsTabsModifier } from '@kit.UIDesignKit'
+import { hdsMaterial, HdsAnimationMode, HdsTabs, HdsTabsController, HdsTabsModifier } from '@kit.UIDesignKit'
 import { common } from '@kit.AbilityKit'
 import document from '@ohos.document'
 import { StorageService } from '../services/StorageService'
@@ -48,9 +48,9 @@ struct HomePage {
   @State weakTopics: string[] = []
   @State topics: TopicData[] = []
   @State currentTab: number = 0
-  @State isAdaptiveMiniBarExpanded: boolean = false
   @StorageProp('immersiveSystemTopInsetPx') immersiveSystemTopInsetPx: number = 0
-  @StorageProp('immersiveNavigationIndicatorHeightVp') @Watch('configureHdsTabs') navigationIndicatorHeightVp: number = 16
+  @StorageProp('immersiveNavigationIndicatorHeightVp') @Watch('configureHdsTabs') navigationIndicatorHeightVp: number =
+    16
   @State hdsTabsModifier: HdsTabsModifier = new HdsTabsModifier()
   @State materialCount: number = 0
   @State questionBankCount: number = 0
@@ -89,6 +89,9 @@ struct HomePage {
   @State bannerState: BannerState = new BannerState()
   private storage: StorageService = StorageService.getInstance()
   private hdsTabsController: HdsTabsController = new HdsTabsController()
+  private scrollDirection: number = 0
+  private scrollDistance: number = 0
+  private isBottomTabBarHidden: boolean = false
 
   aboutToAppear(): void {
     this.initializeHomeBanners()
@@ -159,6 +162,47 @@ struct HomePage {
       .vertical(false)
       .barPosition(BarPosition.End)
       .barHeight(56)
+  }
+
+  private handleVerticalPageScroll(yOffset: number, scrollSource: ScrollSource): void {
+    if (scrollSource !== ScrollSource.DRAG) {
+      return
+    }
+    if (Math.abs(yOffset) < 0.5) {
+      return
+    }
+    const direction = yOffset > 0 ? 1 : -1
+    if (direction !== this.scrollDirection) {
+      this.scrollDirection = direction
+      this.scrollDistance = 0
+    }
+    this.scrollDistance += Math.abs(yOffset)
+    if (this.scrollDistance < 20) {
+      return
+    }
+    this.scrollDistance = 0
+
+    // Scroll offset is opposite to the finger direction: positive means an upward swipe.
+    const shouldHide = direction > 0
+    if (shouldHide === this.isBottomTabBarHidden) {
+      return
+    }
+    this.isBottomTabBarHidden = shouldHide
+    if (shouldHide) {
+      this.hdsTabsController.applyHideAnimation(HdsAnimationMode.SCROLL_ANIMATION)
+    } else {
+      this.hdsTabsController.applyShowAnimation(HdsAnimationMode.SCROLL_ANIMATION)
+    }
+  }
+
+  private showBottomTabBar(): void {
+    this.scrollDirection = 0
+    this.scrollDistance = 0
+    if (!this.isBottomTabBarHidden) {
+      return
+    }
+    this.isBottomTabBarHidden = false
+    this.hdsTabsController.applyShowAnimation(HdsAnimationMode.SCROLL_ANIMATION)
   }
 
   loadData(): void {
@@ -1002,47 +1046,6 @@ struct HomePage {
       .labelStyle({ unselectedColor: $r('sys.color.font_primary') })
   }
 
-  @Builder
-  private adaptiveMiniBar() {
-    Row() {
-      Column() {
-        Text('HMS')
-          .fontSize(13)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(Color.White)
-      }
-      .width(64)
-      .height(64)
-      .justifyContent(FlexAlign.Center)
-      .backgroundColor('#174FE5')
-      .borderRadius(32)
-      .border({ width: 1, color: '#99FFFFFF' })
-      .shadow({ radius: 12, color: '#551442C8', offsetY: 3 })
-      .margin({ left: 4, right: 4 })
-
-      Text('StudyOral Coach')
-        .fontSize(14)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('sys.color.font_primary'))
-        .layoutWeight(1)
-
-      Column() {
-        Image($r('sys.media.ohos_ic_public_pause'))
-          .width(40)
-          .height(40)
-          .borderRadius(40)
-      }
-      .width(48)
-      .height(48)
-      .justifyContent(FlexAlign.Center)
-    }
-    .height(56)
-    .onClick(() => {
-      this.isAdaptiveMiniBarExpanded = !this.isAdaptiveMiniBarExpanded
-      this.hdsTabsController.applyMiniBarStyle(this.isAdaptiveMiniBarExpanded ? HdsBarStyle.EXPAND : HdsBarStyle.COLLAPSE)
-    })
-  }
-
   private immersiveTopInsetVp(): number {
     return this.getUIContext().px2vp(this.immersiveSystemTopInsetPx) + 8
   }
@@ -1154,16 +1157,6 @@ struct HomePage {
   private practiceTab() {
     Scroll() {
       Column() {
-        Row() {
-          Text('Practice')
-            .fontSize(22)
-            .fontWeight(FontWeight.Bold)
-            .fontColor('#080D2D')
-            .layoutWeight(1)
-        }
-        .width('100%')
-        .margin({ top: this.immersiveTopInsetVp(), bottom: 8 })
-
         Column() {
           this.practiceStartButton()
           this.practiceFilesPanel()
@@ -1176,11 +1169,15 @@ struct HomePage {
       .width('100%')
       .height('100%')
       .justifyContent(FlexAlign.Start)
-      .padding({ left: 18, right: 18, bottom: 22 })
+      .padding({ left: 18, right: 18, top: this.immersiveTopInsetVp(), bottom: 22 })
     }
     .width('100%')
     .height('100%')
     .scrollBar(BarState.Off)
+    .onWillScroll((_xOffset: number, yOffset: number, _scrollState: ScrollState, scrollSource: ScrollSource) => {
+      this.handleVerticalPageScroll(yOffset, scrollSource)
+    })
+    .edgeEffect(EdgeEffect.Spring)
   }
 
   @Builder
@@ -1339,6 +1336,10 @@ struct HomePage {
     .width('100%')
     .height('100%')
     .scrollBar(BarState.Off)
+    .onWillScroll((_xOffset: number, yOffset: number, _scrollState: ScrollState, scrollSource: ScrollSource) => {
+      this.handleVerticalPageScroll(yOffset, scrollSource)
+    })
+    .edgeEffect(EdgeEffect.Spring)
   }
 
   @Builder
@@ -1548,16 +1549,6 @@ struct HomePage {
       Column() {
         if (this.selectedHistoryRecordId.length > 0) {
           this.selectedHistoryPracticeResult()
-        } else {
-          Row() {
-            Text('History')
-              .fontSize(22)
-              .fontWeight(FontWeight.Bold)
-              .fontColor('#080D2D')
-              .layoutWeight(1)
-          }
-          .width('100%')
-          .margin({ top: this.immersiveTopInsetVp(), bottom: 8 })
         }
 
         if (this.selectedHistoryRecordId.length === 0 && this.historyRecords.length === 0) {
@@ -1589,30 +1580,24 @@ struct HomePage {
       .width('100%')
       .height('100%')
       .justifyContent(FlexAlign.Start)
-      .padding({ left: 18, right: 18, bottom: 22 })
+      .padding({ left: 18, right: 18, top: this.immersiveTopInsetVp(), bottom: 22 })
     }
     .width('100%')
     .height('100%')
     .scrollBar(BarState.Off)
+    .onWillScroll((_xOffset: number, yOffset: number, _scrollState: ScrollState, scrollSource: ScrollSource) => {
+      this.handleVerticalPageScroll(yOffset, scrollSource)
+    })
+    .edgeEffect(EdgeEffect.Spring)
   }
 
   @Builder
   private homeTab() {
     Scroll() {
       Column() {
-        Row() {
-          Text('Home')
-            .fontSize(22)
-            .fontWeight(FontWeight.Bold)
-            .fontColor('#080D2D')
-            .layoutWeight(1)
-        }
-        .width('100%')
-        .padding({ left: 18, right: 18 })
-        .margin({ top: this.immersiveTopInsetVp(), bottom: 8 })
-
         BannerCard({ bannerState: this.bannerState, tabViewType: TabBarType.HOME })
           .width('100%')
+          .margin({ top: this.immersiveTopInsetVp() })
 
         if (this.hasIncompletePractice) {
           Row() {
@@ -1700,14 +1685,15 @@ struct HomePage {
     .width('100%')
     .height('100%')
     .scrollBar(BarState.Off)
+    .onWillScroll((_xOffset: number, yOffset: number, _scrollState: ScrollState, scrollSource: ScrollSource) => {
+      this.handleVerticalPageScroll(yOffset, scrollSource)
+    })
+    .edgeEffect(EdgeEffect.Spring)
   }
 
   build() {
     Column() {
-      HdsTabs({
-        controller: this.hdsTabsController,
-        index: this.currentTab
-      }) {
+      HdsTabs({ controller: this.hdsTabsController, index: this.currentTab }) {
         TabContent() {
           this.homeTab()
         }
@@ -1736,10 +1722,6 @@ struct HomePage {
       .barFloatingStyle({
         adaptToHandedness: true,
         barBottomMargin: this.navigationIndicatorHeightVp > 0 ? this.navigationIndicatorHeightVp : 16,
-        miniBar: {
-          miniBarBuilder: () => this.adaptiveMiniBar(),
-          miniBarStyle: this.isAdaptiveMiniBarExpanded ? HdsBarStyle.EXPAND : HdsBarStyle.COLLAPSE
-        },
         systemMaterialEffect: {
           materialType: hdsMaterial.MaterialType.IMMERSIVE,
           materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
@@ -1747,8 +1729,7 @@ struct HomePage {
       })
       .onChange((index: number) => {
         this.currentTab = index
-        this.isAdaptiveMiniBarExpanded = false
-        this.hdsTabsController.applyMiniBarStyle(HdsBarStyle.COLLAPSE)
+        this.showBottomTabBar()
       })
       .scrollable(false)
       .width('100%')
