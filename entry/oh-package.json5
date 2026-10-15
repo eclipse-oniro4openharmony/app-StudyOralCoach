@@ -5,5 +5,7 @@
   "main": "",
   "author": "",
   "license": "",
-  "dependencies": {}
+  "dependencies": {
+    "@ohos/imageknife": "@param:dependencies.imageknife-version"
+  }
 }

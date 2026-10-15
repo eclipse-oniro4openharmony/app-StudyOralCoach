@@ -1,6 +1,7 @@
 {
   "modelVersion": "5.1.0",
   "description": "Please describe the basic information.",
+  "parameterFile": "VersionFile.json5",
   "dependencies": {},
   "devDependencies": {
     "@ohos/hypium": "1.0.24",
