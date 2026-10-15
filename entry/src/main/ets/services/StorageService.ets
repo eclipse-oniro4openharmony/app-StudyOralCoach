@@ -205,6 +205,7 @@ export class StorageService {
     exam.materialIds = source.materialIds ?? []
     exam.startedAt = source.startedAt ?? '0'
     exam.updatedAt = source.updatedAt ?? exam.startedAt
+    exam.durationSeconds = source.durationSeconds ?? 0
     exam.completedAt = source.completedAt ?? ''
     return exam
   }

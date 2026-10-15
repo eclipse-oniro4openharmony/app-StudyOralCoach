@@ -38,6 +38,7 @@ export class PracticeExamData {
   materialIds: string[] = []
   startedAt: string = '0'
   updatedAt: string = '0'
+  durationSeconds: number = 0
   completedAt: string = ''
 }
 
