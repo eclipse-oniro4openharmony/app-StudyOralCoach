@@ -6,6 +6,12 @@ import { StorageService } from '../services/StorageService'
 import { MaterialIngestionService } from '../services/MaterialIngestionService'
 import { EvaluationData, PracticeExamData, SessionData, TopicData } from '../model/DataTypes'
 import { MaterialQuestionAnswerRecord, StudyMaterialRecord } from '../model/StudyMaterialRecord'
+import {
+  BannerCard,
+  BannerData,
+  BannerState,
+  TabBarType
+} from '../vendor/sample_in_harmonyos/features/commonbusiness/Index'
 
 class HomePracticeHistoryRecord {
   id: string = ''
@@ -80,11 +86,12 @@ struct HomePage {
   @State materialSwipeOffset: number = 0
   @State materialSwipeStartOffset: number = 0
   @State isPracticeHold: boolean = false
+  @State bannerState: BannerState = new BannerState()
   private storage: StorageService = StorageService.getInstance()
-  private homeBannerController: SwiperController = new SwiperController()
   private hdsTabsController: HdsTabsController = new HdsTabsController()
 
   aboutToAppear(): void {
+    this.initializeHomeBanners()
     const routeParams = router.getParams()
     let tab = ''
     if (routeParams !== undefined && routeParams !== null) {
@@ -106,6 +113,27 @@ struct HomePage {
       this.loadData()
       this.loadMaterialData()
     })
+  }
+
+  private initializeHomeBanners(): void {
+    this.bannerState.bannerHeight = 237
+    const banners: BannerData[] = [
+      this.createHomeBanner(1, 'home_banner_ai_oral_practice.png'),
+      this.createHomeBanner(2, 'home_banner_ai_study_file_converter.png'),
+      this.createHomeBanner(3, 'home_banner_get_feedback.png')
+    ]
+    this.bannerState.bannerResource.setDataArray(banners)
+  }
+
+  private createHomeBanner(id: number, mediaUrl: string): BannerData {
+    const banner = new BannerData()
+    banner.id = id
+    banner.title = ''
+    banner.subTitle = ''
+    banner.desc = ''
+    banner.mediaUrl = mediaUrl
+    banner.themeColor = '#3158F4'
+    return banner
   }
 
   onBackPress(): boolean {
@@ -904,45 +932,6 @@ struct HomePage {
   }
 
   @Builder
-  private homeBannerSwiper() {
-    Swiper(this.homeBannerController) {
-      Image($r('app.media.home_banner_3'))
-        .width('100%')
-        .height(142)
-        .objectFit(ImageFit.Contain)
-        .backgroundColor('#F8FBFF')
-        .borderRadius(16)
-        .draggable(false)
-      Image($r('app.media.home_banner_1'))
-        .width('100%')
-        .height(142)
-        .objectFit(ImageFit.Contain)
-        .backgroundColor('#F8FBFF')
-        .borderRadius(16)
-        .draggable(false)
-      Image($r('app.media.home_banner_2'))
-        .width('100%')
-        .height(142)
-        .objectFit(ImageFit.Contain)
-        .backgroundColor('#F8FBFF')
-        .borderRadius(16)
-        .draggable(false)
-    }
-    .width('100%')
-    .height(142)
-    .cachedCount(3)
-    .index(0)
-    .autoPlay(true)
-    .interval(5000)
-    .indicator(true)
-    .loop(true)
-    .duration(700)
-    .itemSpace(14)
-    .curve(Curve.EaseInOut)
-    .margin({ top: 10, bottom: 10 })
-  }
-
-  @Builder
   private topicRow(title: string, percent: number, iconName: string, color: string, routeId: string) {
     Row() {
       Column() {
@@ -1619,69 +1608,85 @@ struct HomePage {
             .layoutWeight(1)
         }
         .width('100%')
+        .padding({ left: 18, right: 18 })
         .margin({ top: this.immersiveTopInsetVp(), bottom: 8 })
 
-        this.homeBannerSwiper()
-
-        Blank()
-          .layoutWeight(1)
+        BannerCard({ bannerState: this.bannerState, tabViewType: TabBarType.HOME })
+          .width('100%')
 
         if (this.hasIncompletePractice) {
-          this.incompletePracticeCard()
+          Row() {
+            Blank().width(18)
+            this.incompletePracticeCard()
+            Blank().width(18)
+          }
+          .width('100%')
         }
 
-        Column() {
-          this.homeActionRow(
-            'Start Practice',
-            '',
-            'Practice uploaded question bank',
-            'practice',
-            'pages/PracticePage',
-            'practice',
-            true
-          )
-          this.homeActionRow(
-            'Upload Materials',
-            '',
-            'Add documents and generate Q&A',
-            'upload',
-            '',
-            'upload',
-            true
-          )
-          this.homeActionRow(
-            'Question Bank',
-            '',
-            'Prepared questions and answers',
-            'materials',
-            'pages/QuestionBankPage',
-            '',
-            true
-          )
-          this.homeActionRow(
-            'Missed problems',
-            '',
-            'Wrong answers from practice',
-            'target',
-            'pages/WeakTopicsPage',
-            '',
-            true
-          )
-          this.homeActionRow(
-            'Practiced',
-            '',
-            'Questions already practiced',
-            'history',
-            'pages/PracticeStatsPage',
-            '',
-            false
-          )
+        Row() {
+          Blank().width(18)
+          Column() {
+            this.homeActionRow(
+              'Start Practice',
+              '',
+              'Practice uploaded question bank',
+              'practice',
+              'pages/PracticePage',
+              'practice',
+              true
+            )
+            this.homeActionRow(
+              'Upload Materials',
+              '',
+              'Add documents and generate Q&A',
+              'upload',
+              '',
+              'upload',
+              true
+            )
+            this.homeActionRow(
+              'Question Bank',
+              '',
+              'Prepared questions and answers',
+              'materials',
+              'pages/QuestionBankPage',
+              '',
+              true
+            )
+            this.homeActionRow(
+              'Missed problems',
+              '',
+              'Wrong answers from practice',
+              'target',
+              'pages/WeakTopicsPage',
+              '',
+              true
+            )
+            this.homeActionRow(
+              'Practiced',
+              '',
+              'Questions already practiced',
+              'history',
+              'pages/PracticeStatsPage',
+              '',
+              false
+            )
+          }
+          .layoutWeight(1)
+          .padding({
+            left: 14,
+            right: 14,
+            top: 6,
+            bottom: 6
+          })
+          .margin({ top: 10 })
+          .backgroundColor('#FFFFFF')
+          .borderRadius(12)
+          .border({ width: 1, color: '#E6EAF4' })
+
+          Blank().width(18)
         }
         .width('100%')
-        .padding({ left: 14, right: 14, top: 6, bottom: 6 })
-        .backgroundColor('#FFFFFF')
-        .borderRadius(12)
-        .border({ width: 1, color: '#E6EAF4' })
 
         Blank()
           .layoutWeight(1)
@@ -1690,7 +1695,7 @@ struct HomePage {
       .height('100%')
       .justifyContent(FlexAlign.Start)
       .alignItems(HorizontalAlign.Start)
-      .padding({ left: 18, right: 18, bottom: 22 })
+      .padding({ bottom: 22 })
     }
     .width('100%')
     .height('100%')
