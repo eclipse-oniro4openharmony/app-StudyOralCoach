@@ -19,6 +19,7 @@ class PracticeFileHistoryRecord {
   latestSessionId: string = ''
   latestPracticeAt: string = ''
   rows: PracticeHistoryQuestionResult[] = []
+  isIncomplete: boolean = false
 }
 
 class PracticeHistoryQuestionResult {
@@ -81,6 +82,7 @@ struct HistoryPage {
       record.fileName = this.fileNamesForExam(exam, questions, materials)
       record.progressText = exam.answeredQuestionIds.length.toString() + '/' + exam.questionIds.length.toString()
       record.latestPracticeAt = exam.updatedAt
+      record.isIncomplete = exam.status !== 'completed' && exam.questionIds.length > exam.answeredQuestionIds.length
       const latestSession = sessions.find((session: SessionData) => (session.examId ?? '') === exam.id)
       record.latestSessionId = latestSession !== undefined ? latestSession.id : ''
       this.applyEvaluationToRecord(record, evaluations)
@@ -245,6 +247,16 @@ struct HistoryPage {
     this.selectedRows = []
   }
 
+  private continuePractice(record: PracticeFileHistoryRecord): void {
+    if (record.examId.length === 0) {
+      return
+    }
+    router.pushUrl({
+      url: 'pages/PracticePage',
+      params: { topicId: '', examId: record.examId }
+    })
+  }
+
   @Builder
   private brandIcon(name: string, size: number, dimmed: boolean = false) {
     if (name === 'home') {
@@ -272,7 +284,8 @@ struct HistoryPage {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%')
-        Text('Practice Result' + (record.progressText.length > 0 ? (' · ' + record.progressText) : ''))
+        Text((record.isIncomplete ? 'In Progress' : 'Practice Result') +
+          (record.progressText.length > 0 ? (' · ' + record.progressText) : ''))
           .fontSize(12)
           .fontColor('#59627E')
           .margin({ top: 4 })
@@ -281,17 +294,32 @@ struct HistoryPage {
       .layoutWeight(1)
       .margin({ left: 12 })
 
-      Text(this.formatTime(record.latestPracticeAt))
-        .fontSize(12)
-        .fontColor('#59627E')
-        .margin({ left: 10 })
+      if (record.isIncomplete) {
+        Button('Continue')
+          .height(34)
+          .padding({ left: 12, right: 12 })
+          .fontSize(12)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#FFFFFF')
+          .backgroundColor('#1655FF')
+          .borderRadius(10)
+          .margin({ left: 10 })
+          .onClick(() => {
+            this.continuePractice(record)
+          })
+      } else {
+        Text(this.formatTime(record.latestPracticeAt))
+          .fontSize(12)
+          .fontColor('#59627E')
+          .margin({ left: 10 })
 
-      Image($r('app.media.ic_next_question'))
-        .width(22)
-        .height(22)
-        .objectFit(ImageFit.Contain)
-        .margin({ left: 8 })
-        .draggable(false)
+        Image($r('app.media.ic_next_question'))
+          .width(22)
+          .height(22)
+          .objectFit(ImageFit.Contain)
+          .margin({ left: 8 })
+          .draggable(false)
+      }
     }
     .width('100%')
     .height(74)
@@ -301,7 +329,11 @@ struct HistoryPage {
     .border({ width: 1, color: '#E6EAF4' })
     .margin({ bottom: 12 })
     .onClick(() => {
-      this.selectRecord(record)
+      if (record.isIncomplete) {
+        this.continuePractice(record)
+      } else {
+        this.selectRecord(record)
+      }
     })
   }
 
@@ -463,7 +495,6 @@ struct HistoryPage {
   private bottomNav(active: string) {
     Row() {
       this.navItem('home', 'Home', active === 'Home')
-      this.navItem('practice', 'Practice', active === 'Practice')
       this.navItem('materials', 'Materials', active === 'Materials')
       this.navItem('history', 'History', active === 'History')
     }
@@ -490,7 +521,7 @@ struct HistoryPage {
     .onClick(() => {
       router.replaceUrl({
         url: 'pages/HomePage',
-        params: { tab: label === 'Practice' ? 'practice' : (label === 'Materials' ? 'materials' : (label === 'History' ? 'history' : 'home')) }
+        params: { tab: label === 'Materials' ? 'materials' : (label === 'History' ? 'history' : 'home') }
       })
     })
   }

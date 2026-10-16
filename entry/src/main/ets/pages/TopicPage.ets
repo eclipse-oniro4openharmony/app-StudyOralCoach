@@ -159,7 +159,6 @@ struct TopicPage {
   private bottomNav(active: string) {
     Row() {
       this.navItem('home', 'Home', active === 'Home', 'pages/HomePage')
-      this.navItem('practice', 'Practice', active === 'Practice', 'pages/TopicPage')
       this.navItem('materials', 'Materials', active === 'Materials', 'pages/MaterialsPage')
       this.navItem('history', 'History', active === 'History', 'pages/HistoryPage')
     }
@@ -186,7 +185,7 @@ struct TopicPage {
     .onClick(() => {
       router.replaceUrl({
         url: 'pages/HomePage',
-        params: { tab: label === 'Practice' ? 'practice' : (label === 'Materials' ? 'materials' : (label === 'History' ? 'history' : 'home')) }
+        params: { tab: label === 'Materials' ? 'materials' : (label === 'History' ? 'history' : 'home') }
       })
     })
   }
@@ -200,7 +199,7 @@ struct TopicPage {
           .onClick(() => {
             router.back()
           })
-        Text('Practice')
+        Text('Topics')
           .fontSize(18)
           .fontWeight(FontWeight.Bold)
           .fontColor('#111936')
@@ -221,11 +220,11 @@ struct TopicPage {
         Column() {
           Row() {
             Column() {
-              Text('Choose a topic')
+              Text('Manage topics')
                 .fontSize(22)
                 .fontWeight(FontWeight.Bold)
                 .fontColor('#080D2D')
-              Text('Start a mock oral exam from your practice library.')
+              Text('Organize your questions by subject.')
                 .fontSize(13)
                 .fontColor('#56607D')
                 .lineHeight(20)
@@ -237,12 +236,12 @@ struct TopicPage {
           .margin({ bottom: 18 })
 
           Column() {
-            Text('Start Mock Exam')
+            Text('Topic Library')
               .fontSize(17)
               .fontWeight(FontWeight.Bold)
               .fontColor('#FFFFFF')
               .width('100%')
-            Text('Pick a topic below and practice under exam conditions.')
+            Text('Select a topic to review or manage its questions.')
               .fontSize(13)
               .fontColor('#EEF3FF')
               .lineHeight(20)
@@ -277,7 +276,7 @@ struct TopicPage {
       .layoutWeight(1)
       .scrollBar(BarState.Off)
 
-      this.bottomNav('Practice')
+      this.bottomNav('')
     }
     .width('100%')
     .height('100%')
