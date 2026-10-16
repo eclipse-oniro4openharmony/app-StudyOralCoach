@@ -7,17 +7,13 @@ served for spoken or typed answers with feedback against the saved answer.
 
 ## Screenshots
 
-| Home | Practice | Speaking |
+| Home | Practice Session | Typed Answer |
 | --- | --- | --- |
-| <img src="Image/home-dashboard.jpg" width="220" alt="Home dashboard" /> | <img src="Image/practice-start.jpg" width="220" alt="Practice start" /> | <img src="Image/practice-speak-idle.jpg" width="220" alt="Speak practice" /> |
+| <img src="Image/home-dashboard-final.png" width="220" alt="Home dashboard with Start Practice and three bottom tabs" /> | <img src="Image/practice-session-current.png" width="220" alt="Practice session with timer and Speak action" /> | <img src="Image/practice-answer-current.png" width="220" alt="Typed answer with fixed Cancel and Submit Answer actions" /> |
 
-| Recording | Materials | History |
-| --- | --- | --- |
-| <img src="Image/practice-speech-recording.jpg" width="220" alt="Speech recording" /> | <img src="Image/materials-ready.jpg" width="220" alt="Materials ready" /> | <img src="Image/history-list.jpg" width="220" alt="History list" /> |
-
-| Missed Problems | Practice Result |
+| Materials | History |
 | --- | --- |
-| <img src="Image/missed-problems.jpg" width="220" alt="Missed problems" /> | <img src="Image/practice-result-detail.jpg" width="220" alt="Practice result detail" /> |
+| <img src="Image/materials-current.png" width="220" alt="Materials page with three bottom tabs" /> | <img src="Image/history-current.png" width="220" alt="History page with three bottom tabs" /> |
 
 ## Core Idea
 
@@ -36,8 +32,10 @@ practice the exact material the user uploaded.
 - Convert adjacent question-answer content into structured Q&A records.
 - Store materials, extracted text, Q&A pairs, practice counts, and session
   history in the local SQLite database `study_oral_coach.db`.
-- Practice by speaking or typing an answer.
+- Start or continue practice from Home, then answer by speaking or typing.
+- Track elapsed exam time and resume incomplete exams from Home or History.
 - Stream microphone audio through the backend to Deepgram for speech-to-text.
+- Stop microphone capture before evaluating an answer.
 - Score answers by comparing the user answer with the saved correct answer, with
   optional local AI feedback.
 - Review all prepared questions, practiced questions, missed problems, and
@@ -50,21 +48,24 @@ practice the exact material the user uploaded.
 3. PDF content is sent to the backend extraction endpoint.
 4. The backend uses `pdfjs-dist` to extract text and returns Q&A candidates.
 5. The app stores the extracted text and Q&A pairs in SQLite.
-6. Practice randomly selects questions from the uploaded question bank.
+6. Start Practice from Home. The session randomly selects questions from the uploaded question bank.
 7. The user answers by voice or text.
 8. The app evaluates the answer against the saved correct answer and records the
    result.
 
 ## Main Screens
 
-- **Home**: quick entry points for practice, upload, question bank, missed
-  problems, and practiced questions.
-- **Practice**: start button, attached files, randomized question practice,
-  voice input, typed input, scoring, and correct-answer feedback.
+- **Home**: Start Practice and Continue Practice entry points, upload, question
+  bank, missed problems, and practiced-question shortcuts.
+- **Practice session**: a standalone question flow with a timer, voice or typed
+  answers, scoring, and correct-answer feedback. Cancel/Submit and Retry/Next
+  actions stay at the bottom, and the session has no bottom tab bar.
 - **Materials**: add material, view uploaded documents, and inspect converted
   Q&A records.
 - **History**: list practice sessions by file and time, then open the full
   practice result for that file.
+- **Navigation**: bottom tabs are Home, Materials, and History. Practice is
+  opened from Home rather than a dedicated bottom tab.
 - **Question Bank**: browse all prepared questions and their saved answers.
 - **Missed Problems**: review incorrectly answered questions with user answers,
   correct answers, and feedback.
@@ -170,7 +171,9 @@ guidance rather than an authoritative grading result.
 
 - PDF upload and extraction are implemented through the backend.
 - Extracted Q&A pairs are stored locally in SQLite.
-- Practice supports typed and spoken answers.
+- Practice is available from Home and supports typed and spoken answers.
 - Deepgram transcription is proxied by the backend.
 - Materials, Question Bank, Missed Problems, and History screens are connected
   to local study data.
+- The dedicated Practice bottom tab has been removed; Start Practice and
+  Continue Practice remain available from Home.
