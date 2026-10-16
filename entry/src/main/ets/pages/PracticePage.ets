@@ -1,5 +1,5 @@
 import { promptAction, router } from '@kit.ArkUI'
-import { common } from '@kit.AbilityKit'
+import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit'
 import { StorageService } from '../services/StorageService'
 import { AiService } from '../services/AiService'
 import { MaterialIngestionService } from '../services/MaterialIngestionService'
@@ -36,6 +36,11 @@ struct PracticePage {
   @State speechStatus: string = 'Tap to answer aloud'
   @State questionProgressText: string = '0/0'
   @State practiceDurationSeconds: number = 0
+  @State expandedTextSection: string = ''
+  @State questionTextOverflows: boolean = false
+  @State answerTextOverflows: boolean = false
+  @State feedbackTextOverflows: boolean = false
+  @State correctAnswerTextOverflows: boolean = false
   private storage: StorageService = StorageService.getInstance()
   private ai: AiService = AiService.getInstance()
   private materialService: MaterialIngestionService | null = null
@@ -46,6 +51,10 @@ struct PracticePage {
   private practiceTimerId: number = -1
   private practiceTimerStartedAt: number = 0
   private practiceTimerBaseSeconds: number = 0
+  private questionTextWidthVp: number = 0
+  private answerTextWidthVp: number = 0
+  private feedbackTextWidthVp: number = 0
+  private correctAnswerTextWidthVp: number = 0
 
   aboutToAppear(): void {
     const params = router.getParams() as Record<string, string>
@@ -78,6 +87,8 @@ struct PracticePage {
     this.questionLabel = 'Practice Question'
     this.currentQuestionPracticeCount = 0
     this.questionProgressText = '0/0'
+    this.expandedTextSection = ''
+    this.refreshTextOverflow()
 
     const topics = this.storage.getTopics()
     const topic = topics.find(t => t.id === this.topicId)
@@ -113,6 +124,7 @@ struct PracticePage {
     if (question.length === 0 && this.topicId.length === 0) {
       this.questionLabel = 'Question Practice'
       this.currentQuestion = 'No uploaded questions are ready yet.'
+      this.refreshTextOverflow()
       this.currentPracticeIndex = 0
       this.questionProgressText = '0/0'
       return
@@ -132,6 +144,7 @@ struct PracticePage {
       this.hasPracticeQuestion = true
     }
     this.currentQuestion = question
+    this.refreshTextOverflow()
     this.startPracticeTimer()
     const questionMessage = new ChatMessageData()
     questionMessage.id = (Date.now() + 1).toString()
@@ -144,19 +157,24 @@ struct PracticePage {
   }
 
   async processAnswer(): Promise<void> {
-    const trimmedAnswer = this.userAnswer.trim()
     if (!this.hasPracticeQuestion || this.currentQuestion.length === 0 || this.answerSubmitted || this.isProcessing) {
       return
     }
-    if (trimmedAnswer.length === 0) {
-      promptAction.showToast({ message: 'Please enter your answer first', duration: 1400 })
-      return
-    }
-    this.userAnswer = trimmedAnswer
     this.isProcessing = true
     this.answerSubmitted = true
 
     try {
+      await this.asrClient.stop()
+      this.isRecording = false
+
+      const trimmedAnswer = this.userAnswer.trim()
+      if (trimmedAnswer.length === 0) {
+        this.answerSubmitted = false
+        promptAction.showToast({ message: 'Please enter your answer first', duration: 1400 })
+        return
+      }
+      this.userAnswer = trimmedAnswer
+
       const userMessage = new ChatMessageData()
       userMessage.id = Date.now().toString()
       userMessage.sessionId = this.sessionId
@@ -180,7 +198,9 @@ struct PracticePage {
       this.evalConfidenceScore = evalResult.confidenceScore
       this.evalFeedback = feedbackText
       this.showEvaluation = true
+      this.expandedTextSection = ''
       this.practiceMode = 'result'
+      this.refreshTextOverflow()
 
       const evalObj = new EvaluationData()
       evalObj.id = Date.now().toString()
@@ -374,16 +394,29 @@ struct PracticePage {
       return
     }
 
+    const granted = await this.requestMicrophonePermission()
+    if (!granted) {
+      this.speechStatus = 'Microphone permission is needed for spoken answers'
+      promptAction.showToast({ message: 'Microphone permission is needed for spoken answers', duration: 1800 })
+      return
+    }
+
     this.userAnswer = ''
     this.isRecording = true
     this.speechStatus = 'Listening... tap again to stop'
 
     const listener = new DeepgramAsrListener(
       (segment: TranscriptionSegment): void => {
+        if (!this.isRecording) {
+          return
+        }
         this.userAnswer = segment.text
         this.speechStatus = segment.text.length > 0 ? segment.text : 'Listening... tap again to stop'
       },
       (fullText: string): void => {
+        if (!this.isRecording) {
+          return
+        }
         if (fullText.length > 0) {
           this.userAnswer = fullText
           this.practiceMode = 'write'
@@ -394,14 +427,16 @@ struct PracticePage {
         this.isRecording = false
       },
       (error: string): void => {
+        if (!this.isRecording) {
+          return
+        }
         if (this.userAnswer.trim().length > 0) {
-          this.speechStatus = 'Speech captured'
-          this.practiceMode = 'write'
-          this.isRecording = false
-          console.warn('[StudyOralASR] ignored late error after transcript: ' + error)
+          console.warn('[StudyOralASR] stopping after transcript error: ' + error)
+          void this.stopSpeechCapture(false)
           return
         }
         this.isRecording = false
+        void this.asrClient.stop()
         this.speechStatus = 'Speech transcription failed'
         promptAction.showToast({ message: 'Speech transcription failed', duration: 1400 })
         console.error('[StudyOralASR] ' + error)
@@ -409,6 +444,18 @@ struct PracticePage {
     )
 
     await this.asrClient.start(listener)
+  }
+
+  private async requestMicrophonePermission(): Promise<boolean> {
+    try {
+      const manager = abilityAccessCtrl.createAtManager()
+      const permissions: Permissions[] = ['ohos.permission.MICROPHONE']
+      const result = await manager.requestPermissionsFromUser(getContext(this) as common.UIAbilityContext, permissions)
+      return result.authResults.length > 0 && result.authResults[0] === 0
+    } catch (err) {
+      console.error('[StudyOralASR] microphone permission request failed: ' + JSON.stringify(err))
+      return false
+    }
   }
 
   private async stopSpeechCapture(showToast: boolean = false): Promise<void> {
@@ -467,6 +514,45 @@ struct PracticePage {
     return 'Review the reference answer and try another question.'
   }
 
+  private toggleTextExpansion(section: string): void {
+    this.expandedTextSection = this.expandedTextSection === section ? '' : section
+  }
+
+  private measureTextOverflow(text: string, widthVp: number, fontSize: number, lineHeight: number,
+    maxLines: number, fontWeight: FontWeight = FontWeight.Normal): boolean {
+    if (text.length === 0 || widthVp <= 0) {
+      return false
+    }
+    const measureUtils = this.getUIContext().getMeasureUtils()
+    const fullSize = measureUtils.measureTextSize({
+      textContent: text,
+      constraintWidth: widthVp,
+      fontSize: fontSize,
+      lineHeight: lineHeight,
+      fontWeight: fontWeight
+    })
+    const collapsedSize = measureUtils.measureTextSize({
+      textContent: text,
+      constraintWidth: widthVp,
+      fontSize: fontSize,
+      lineHeight: lineHeight,
+      fontWeight: fontWeight,
+      maxLines: maxLines
+    })
+    return fullSize !== undefined && collapsedSize !== undefined &&
+      Number(fullSize.height) > Number(collapsedSize.height)
+  }
+
+  private refreshTextOverflow(): void {
+    const questionText = this.currentQuestion.length > 0 ? this.currentQuestion : 'No uploaded questions are ready yet.'
+    this.questionTextOverflows = this.measureTextOverflow(questionText, this.questionTextWidthVp,
+      this.showEvaluation ? 16 : 24, this.showEvaluation ? 22 : 31, this.showEvaluation ? 2 : 4, FontWeight.Bold)
+    this.answerTextOverflows = this.measureTextOverflow(this.userAnswer, this.answerTextWidthVp, 12, 17, 4)
+    this.feedbackTextOverflows = this.measureTextOverflow(this.scoreStatusDetail(), this.feedbackTextWidthVp, 12, 16, 4)
+    this.correctAnswerTextOverflows = this.measureTextOverflow(this.currentReferenceAnswer,
+      this.correctAnswerTextWidthVp, 12, 16, 4)
+  }
+
   @Builder
   private questionPracticeCard() {
     Column() {
@@ -494,6 +580,7 @@ struct PracticePage {
             .fontSize(12)
             .fontWeight(FontWeight.Medium)
             .fontColor('#59627E')
+            .margin({ left: 10, right: 8 })
           Text(this.currentQuestionPracticeCount > 0 ? ('Practiced ' + this.currentQuestionPracticeCount.toString() + 'x') : 'Question')
             .fontSize(12)
             .fontWeight(FontWeight.Bold)
@@ -502,15 +589,51 @@ struct PracticePage {
         .width('100%')
         .justifyContent(FlexAlign.SpaceBetween)
 
-        Text(this.currentQuestion.length > 0 ? this.currentQuestion : 'No uploaded questions are ready yet.')
-          .fontSize(this.showEvaluation ? 16 : 24)
-          .fontWeight(FontWeight.Bold)
-          .fontColor('#101733')
-          .lineHeight(this.showEvaluation ? 22 : 31)
-          .maxLines(this.showEvaluation ? 2 : 4)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        if (this.expandedTextSection === 'question') {
+          Scroll() {
+            Column() {
+              Text(this.currentQuestion.length > 0 ? this.currentQuestion : 'No uploaded questions are ready yet.')
+                .fontSize(this.showEvaluation ? 16 : 24)
+                .fontWeight(FontWeight.Bold)
+                .fontColor('#101733')
+                .lineHeight(this.showEvaluation ? 22 : 31)
+                .width('100%')
+            }
+            .width('100%')
+          }
           .width('100%')
+          .height(180)
+          .scrollBar(BarState.Auto)
           .margin({ top: this.showEvaluation ? 12 : 24 })
+        } else {
+          Text(this.currentQuestion.length > 0 ? this.currentQuestion : 'No uploaded questions are ready yet.')
+            .fontSize(this.showEvaluation ? 16 : 24)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#101733')
+            .lineHeight(this.showEvaluation ? 22 : 31)
+            .maxLines(this.showEvaluation ? 2 : 4)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%')
+            .margin({ top: this.showEvaluation ? 12 : 24 })
+            .onAreaChange((_oldArea, newArea) => {
+              this.questionTextWidthVp = Number(newArea.width)
+              this.refreshTextOverflow()
+            })
+        }
+        if (this.questionTextOverflows) {
+          Row() {
+            Blank().layoutWeight(1)
+            Text(this.expandedTextSection === 'question' ? 'Show less' : 'Show all')
+              .fontSize(12)
+              .fontWeight(FontWeight.Medium)
+              .fontColor('#315DFF')
+              .onClick(() => {
+                this.toggleTextExpansion('question')
+              })
+          }
+          .width('100%')
+          .margin({ top: 6 })
+        }
 
         if (this.hasPracticeQuestion && !this.showEvaluation && this.practiceMode === 'speak') {
           Blank().layoutWeight(1)
@@ -583,53 +706,61 @@ struct PracticePage {
             })
           Blank().layoutWeight(1)
         } else if (this.hasPracticeQuestion && !this.showEvaluation) {
-          Column() {
-            Text('Your Answer')
-              .fontSize(15)
-              .fontWeight(FontWeight.Bold)
-              .fontColor('#101733')
+          Scroll() {
+            Column() {
+              Column() {
+                Text('Your Answer')
+                  .fontSize(15)
+                  .fontWeight(FontWeight.Bold)
+                  .fontColor('#101733')
+                  .width('100%')
+                TextArea({ text: this.userAnswer, placeholder: 'Write your answer here...' })
+                  .width('100%')
+                  .height(166)
+                  .fontSize(14)
+                  .fontColor('#111936')
+                  .placeholderColor('#8A94AD')
+                  .backgroundColor('#FFFFFF')
+                  .borderRadius(14)
+                  .border({ width: 1, color: '#DDE5F5' })
+                  .padding(12)
+                  .margin({ top: 10 })
+                  .onChange((value: string) => {
+                    this.userAnswer = value
+                  })
+              }
               .width('100%')
-            TextArea({ text: this.userAnswer, placeholder: 'Write your answer here...' })
-              .width('100%')
-              .height(166)
-              .fontSize(14)
-              .fontColor('#111936')
-              .placeholderColor('#8A94AD')
-              .backgroundColor('#FFFFFF')
-              .borderRadius(14)
-              .border({ width: 1, color: '#DDE5F5' })
-              .padding(12)
-              .margin({ top: 10 })
-              .onChange((value: string) => {
-                this.userAnswer = value
-              })
+              .margin({ top: 34 })
+
+              Button() {
+                Row() {
+                  Image($r('app.media.ic_practice_card_mic'))
+                    .width(18)
+                    .height(18)
+                    .objectFit(ImageFit.Contain)
+                  Text('Switch to Speak')
+                    .fontSize(14)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor('#1655FF')
+                    .margin({ left: 8 })
+                }
+                .justifyContent(FlexAlign.Center)
+                .width('100%')
+              }
+                .width('100%')
+                .height(44)
+                .backgroundColor('#F3F6FF')
+                .borderRadius(14)
+                .margin({ top: 18 })
+                .onClick(() => {
+                  this.practiceMode = 'speak'
+                })
+            }
+            .width('100%')
           }
           .width('100%')
-          .margin({ top: 34 })
-
-          Button() {
-            Row() {
-              Image($r('app.media.ic_practice_card_mic'))
-                .width(18)
-                .height(18)
-                .objectFit(ImageFit.Contain)
-              Text('Switch to Speak')
-                .fontSize(14)
-                .fontWeight(FontWeight.Bold)
-                .fontColor('#1655FF')
-                .margin({ left: 8 })
-            }
-            .justifyContent(FlexAlign.Center)
-            .width('100%')
-          }
-            .width('100%')
-            .height(44)
-            .backgroundColor('#F3F6FF')
-            .borderRadius(14)
-            .margin({ top: 18 })
-            .onClick(() => {
-              this.practiceMode = 'speak'
-            })
+          .layoutWeight(1)
+          .scrollBar(BarState.Auto)
 
           Row() {
             Button('Cancel')
@@ -658,76 +789,131 @@ struct PracticePage {
               })
           }
           .width('100%')
-          .margin({ top: 24 })
+          .margin({ top: 10, bottom: 6 })
         } else if (this.hasPracticeQuestion) {
-          Column() {
-            Text('Your Answer')
-              .fontSize(13)
-              .fontWeight(FontWeight.Bold)
-              .fontColor('#101733')
-              .width('100%')
-            Text(this.userAnswer.length > 0 ? this.userAnswer : 'No answer')
-              .fontSize(12)
-              .fontColor('#101733')
-              .lineHeight(17)
-              .maxLines(4)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-              .width('100%')
-              .margin({ top: 8 })
-          }
-          .width('100%')
-          .padding(14)
-          .backgroundColor('#FFFFFF')
-          .borderRadius(14)
-          .border({ width: 1, color: '#E3E7F4' })
-          .margin({ top: 14 })
-
-          Column() {
-            Text('Answer Feedback')
-              .fontSize(14)
-              .fontWeight(FontWeight.Bold)
-              .fontColor('#5B35D8')
-              .width('100%')
-            Text(this.scoreStatusDetail())
-              .fontSize(12)
-              .fontColor('#1F2A44')
-              .lineHeight(16)
-              .maxLines(4)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-              .width('100%')
-              .margin({ top: 8 })
-          }
-          .width('100%')
-          .padding(14)
-          .backgroundColor('#FFFFFF')
-          .borderRadius(14)
-          .border({ width: 1, color: '#E3E7F4' })
-          .margin({ top: 10 })
-
-          if (this.currentReferenceAnswer.length > 0) {
+          Scroll() {
             Column() {
-              Text('Correct Answer')
-                .fontSize(13)
-                .fontWeight(FontWeight.Bold)
-                .fontColor('#101733')
+              Column() {
+                Row() {
+                  Text('Your Answer')
+                    .fontSize(13)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor('#101733')
+                    .layoutWeight(1)
+                  if (this.answerTextOverflows) {
+                    Text(this.expandedTextSection === 'answer' ? 'Show less' : 'Show all')
+                      .fontSize(12)
+                      .fontWeight(FontWeight.Medium)
+                      .fontColor('#315DFF')
+                      .onClick(() => {
+                        this.toggleTextExpansion('answer')
+                      })
+                  }
+                }
                 .width('100%')
-              Text(this.currentReferenceAnswer)
-                .fontSize(12)
-                .fontColor('#1F2A44')
-                .lineHeight(16)
-                .maxLines(4)
-                .textOverflow({ overflow: TextOverflow.Ellipsis })
-                .width('100%')
-                .margin({ top: 8 })
+                Text(this.userAnswer.length > 0 ? this.userAnswer : 'No answer')
+                  .fontSize(12)
+                  .fontColor('#101733')
+                  .lineHeight(17)
+                  .maxLines(this.expandedTextSection === 'answer' ? 1000 : 4)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  .width('100%')
+                  .margin({ top: 8 })
+                  .onAreaChange((_oldArea, newArea) => {
+                    this.answerTextWidthVp = Number(newArea.width)
+                    this.refreshTextOverflow()
+                  })
+              }
               .width('100%')
+              .padding(14)
+              .backgroundColor('#FFFFFF')
+              .borderRadius(14)
+              .border({ width: 1, color: '#E3E7F4' })
+              .margin({ top: 14 })
+
+              Column() {
+                Row() {
+                  Text('Answer Feedback')
+                    .fontSize(14)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor('#5B35D8')
+                    .layoutWeight(1)
+                  if (this.feedbackTextOverflows) {
+                    Text(this.expandedTextSection === 'feedback' ? 'Show less' : 'Show all')
+                      .fontSize(12)
+                      .fontWeight(FontWeight.Medium)
+                      .fontColor('#315DFF')
+                      .onClick(() => {
+                        this.toggleTextExpansion('feedback')
+                      })
+                  }
+                }
+                .width('100%')
+                Text(this.scoreStatusDetail())
+                  .fontSize(12)
+                  .fontColor('#1F2A44')
+                  .lineHeight(16)
+                  .maxLines(this.expandedTextSection === 'feedback' ? 1000 : 4)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  .width('100%')
+                  .margin({ top: 8 })
+                  .onAreaChange((_oldArea, newArea) => {
+                    this.feedbackTextWidthVp = Number(newArea.width)
+                    this.refreshTextOverflow()
+                  })
+              }
+              .width('100%')
+              .padding(14)
+              .backgroundColor('#FFFFFF')
+              .borderRadius(14)
+              .border({ width: 1, color: '#E3E7F4' })
+              .margin({ top: 10 })
+
+              if (this.currentReferenceAnswer.length > 0) {
+                Column() {
+                  Row() {
+                    Text('Correct Answer')
+                      .fontSize(13)
+                      .fontWeight(FontWeight.Bold)
+                      .fontColor('#101733')
+                      .layoutWeight(1)
+                    if (this.correctAnswerTextOverflows) {
+                      Text(this.expandedTextSection === 'correctAnswer' ? 'Show less' : 'Show all')
+                        .fontSize(12)
+                        .fontWeight(FontWeight.Medium)
+                        .fontColor('#315DFF')
+                        .onClick(() => {
+                          this.toggleTextExpansion('correctAnswer')
+                        })
+                    }
+                  }
+                  .width('100%')
+                  Text(this.currentReferenceAnswer)
+                    .fontSize(12)
+                    .fontColor('#1F2A44')
+                    .lineHeight(16)
+                    .maxLines(this.expandedTextSection === 'correctAnswer' ? 1000 : 4)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    .width('100%')
+                    .margin({ top: 8 })
+                    .onAreaChange((_oldArea, newArea) => {
+                      this.correctAnswerTextWidthVp = Number(newArea.width)
+                      this.refreshTextOverflow()
+                    })
+                }
+                .width('100%')
+                .padding(14)
+                .backgroundColor('#F8FAFF')
+                .borderRadius(14)
+                .border({ width: 1, color: '#E3E7F4' })
+                .margin({ top: 10 })
+              }
             }
             .width('100%')
-            .padding(14)
-            .backgroundColor('#F8FAFF')
-            .borderRadius(14)
-            .border({ width: 1, color: '#E3E7F4' })
-            .margin({ top: 10 })
           }
+          .width('100%')
+          .layoutWeight(1)
+          .scrollBar(BarState.Auto)
 
           Row() {
             Button('Retry')
@@ -771,7 +957,7 @@ struct PracticePage {
               })
           }
           .width('100%')
-          .margin({ top: 10 })
+          .margin({ top: 10, bottom: 6 })
         } else {
           Column() {
             this.brandIcon('materials', 66)
@@ -811,42 +997,6 @@ struct PracticePage {
     .borderRadius(0)
   }
 
-  @Builder
-  private bottomNav(active: string) {
-    Row() {
-      this.navItem('home', 'Home', active === 'Home', 'pages/HomePage')
-      this.navItem('practice', 'Practice', active === 'Practice', 'pages/TopicPage')
-      this.navItem('materials', 'Materials', active === 'Materials', 'pages/MaterialsPage')
-      this.navItem('history', 'History', active === 'History', 'pages/HistoryPage')
-    }
-    .width('100%')
-    .height(72)
-    .padding({ left: 10, right: 10, bottom: 6 })
-    .backgroundColor('#FFFFFF')
-    .border({ width: { top: 1 }, color: '#EEF1F7' })
-  }
-
-  @Builder
-  private navItem(iconName: string, label: string, selected: boolean, url: string) {
-    Column() {
-      this.brandIcon(iconName, 30, !selected)
-      Text(label)
-        .fontSize(10)
-        .fontColor(selected ? '#1655FF' : '#5E6884')
-        .fontWeight(selected ? FontWeight.Bold : FontWeight.Normal)
-        .margin({ top: 2 })
-    }
-    .layoutWeight(1)
-    .height(58)
-    .justifyContent(FlexAlign.Center)
-    .onClick(() => {
-      router.replaceUrl({
-        url: 'pages/HomePage',
-        params: { tab: label === 'Practice' ? 'practice' : (label === 'Materials' ? 'materials' : (label === 'History' ? 'history' : 'home')) }
-      })
-    })
-  }
-
   build() {
     Column() {
       Row() {
@@ -875,8 +1025,6 @@ struct PracticePage {
       .width('100%')
       .layoutWeight(1)
       .padding({ left: 0, right: 0, bottom: 0 })
-
-      this.bottomNav('Practice')
     }
     .width('100%')
     .height('100%')

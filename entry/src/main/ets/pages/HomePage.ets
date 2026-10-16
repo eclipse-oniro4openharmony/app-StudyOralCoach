@@ -27,6 +27,7 @@ class HomePracticeHistoryRecord {
   latestSessionId: string = ''
   latestPracticeAt: string = ''
   rows: HomePracticeHistoryQuestionResult[] = []
+  isIncomplete: boolean = false
 }
 
 class HomePracticeHistoryQuestionResult {
@@ -85,7 +86,6 @@ struct HomePage {
   @State revealedMaterialId: string = ''
   @State materialSwipeOffset: number = 0
   @State materialSwipeStartOffset: number = 0
-  @State isPracticeHold: boolean = false
   @State bannerState: BannerState = new BannerState()
   private storage: StorageService = StorageService.getInstance()
   private hdsTabsController: HdsTabsController = new HdsTabsController()
@@ -101,12 +101,10 @@ struct HomePage {
       const params = routeParams as Record<string, string>
       tab = params.tab ?? ''
     }
-    if (tab === 'practice') {
+    if (tab === 'materials') {
       this.currentTab = 1
-    } else if (tab === 'materials') {
-      this.currentTab = 2
     } else if (tab === 'history') {
-      this.currentTab = 3
+      this.currentTab = 2
     } else {
       this.currentTab = 0
     }
@@ -215,7 +213,8 @@ struct HomePage {
     this.missedProblemCount = evaluations
       .filter((evaluation: EvaluationData) => {
         const relatedSession = sessions.find((session: SessionData) => session.id === evaluation.sessionId)
-        return Number(evaluation.overallScore) < 60 && relatedSession !== undefined && relatedSession.questionId.length > 0
+        return Number(evaluation.overallScore) < 60 && relatedSession !== undefined &&
+          relatedSession.questionId.length > 0
       }).length
     const latestSession = sessions.find((session: SessionData) => session.questionId.length > 0)
     if (latestSession !== undefined) {
@@ -237,7 +236,8 @@ struct HomePage {
     if (incompleteExam !== null) {
       this.hasIncompletePractice = true
       this.incompletePracticeExamId = incompleteExam.id
-      this.incompletePracticeProgress = incompleteExam.answeredQuestionIds.length.toString() + '/' + incompleteExam.questionIds.length.toString()
+      this.incompletePracticeProgress =
+        incompleteExam.answeredQuestionIds.length.toString() + '/' + incompleteExam.questionIds.length.toString()
       this.incompletePracticeTime = this.formatHomeTime(incompleteExam.updatedAt)
     } else {
       this.hasIncompletePractice = false
@@ -280,7 +280,7 @@ struct HomePage {
   }
 
   private async uploadMaterialFile(): Promise<void> {
-    this.currentTab = 2
+    this.currentTab = 1
     this.uploadStatus = 'Opening file picker...'
     this.uploadSource = 'Choose a study material file from this device.'
     try {
@@ -322,7 +322,8 @@ struct HomePage {
       }
       const latestSession = this.storage.getSessions().find((session: SessionData) => session.questionId.length > 0)
       if (latestSession !== undefined) {
-        const latestQuestion = allQuestions.find((question: MaterialQuestionAnswerRecord) => question.id === latestSession.questionId)
+        const latestQuestion =
+          allQuestions.find((question: MaterialQuestionAnswerRecord) => question.id === latestSession.questionId)
         if (latestQuestion !== undefined) {
           const material = allMaterials.find((item: StudyMaterialRecord) => item.id === latestQuestion.materialId)
           this.latestPracticeMaterialId = latestQuestion.materialId
@@ -415,6 +416,7 @@ struct HomePage {
       record.fileName = this.fileNamesForExamQuestions(exam, questions, materials)
       record.progressText = exam.answeredQuestionIds.length.toString() + '/' + exam.questionIds.length.toString()
       record.latestPracticeAt = exam.updatedAt
+      record.isIncomplete = exam.status !== 'completed' && exam.questionIds.length > exam.answeredQuestionIds.length
       const latestSession = sessions.find((session: SessionData) => (session.examId ?? '') === exam.id)
       record.latestSessionId = latestSession !== undefined ? latestSession.id : ''
       this.applyHomeEvaluationToRecord(record, evaluations)
@@ -449,7 +451,7 @@ struct HomePage {
     })
 
     return records.sort((a: HomePracticeHistoryRecord, b: HomePracticeHistoryRecord) =>
-      Number(b.latestPracticeAt) - Number(a.latestPracticeAt))
+    Number(b.latestPracticeAt) - Number(a.latestPracticeAt))
   }
 
   private buildHomeQuestionRowsForExam(exam: PracticeExamData, questions: MaterialQuestionAnswerRecord[],
@@ -535,6 +537,54 @@ struct HomePage {
     this.selectedHistoryRows = []
   }
 
+  private continuePracticeExam(examId: string): void {
+    if (examId.length === 0) {
+      return
+    }
+    this.getUIContext().getRouter().pushUrl({
+      url: 'pages/PracticePage',
+      params: { topicId: '', examId: examId }
+    })
+  }
+
+  private startNewPractice(routeUrl: string): void {
+    this.getUIContext().getRouter().pushUrl({ url: routeUrl, params: { topicId: '' } })
+  }
+
+  private openPracticeStart(routeUrl: string): void {
+    const incompleteExam = this.storage.getLatestIncompletePracticeExam()
+    if (incompleteExam === null) {
+      this.startNewPractice(routeUrl)
+      return
+    }
+    const progress =
+      incompleteExam.answeredQuestionIds.length.toString() + '/' + incompleteExam.questionIds.length.toString()
+    AlertDialog.show({
+      title: 'Unfinished Practice',
+      message: 'You have an unfinished practice exam (' + progress + ').',
+      autoCancel: true,
+      buttons: [
+        {
+          value: 'Continue',
+          action: () => {
+            this.continuePracticeExam(incompleteExam.id)
+          }
+        },
+        {
+          value: 'Start',
+          action: () => {
+            this.startNewPractice(routeUrl)
+          }
+        },
+        {
+          value: 'Cancel',
+          action: () => {
+          }
+        }
+      ]
+    })
+  }
+
   private materialCardHeight(material: StudyMaterialRecord): number {
     return 74
   }
@@ -565,7 +615,7 @@ struct HomePage {
     const lowerName = material.fileName.toLowerCase()
     const uri = 'file://' + material.sandboxPath
     if (this.isImageMaterial(material)) {
-      router.      pushUrl({ url: 'pages/ImagePreviewPage', params: { imageUri: uri } })
+      router.pushUrl({ url: 'pages/ImagePreviewPage', params: { imageUri: uri } })
       return
     }
     if (lowerName.endsWith('.pdf') || material.extension.toLowerCase() === '.pdf') {
@@ -573,11 +623,13 @@ struct HomePage {
       return
     }
     if (this.isTextMaterial(material)) {
-      router.pushUrl({ url: 'pages/TextFilePreviewPage', params: { filePath: material.sandboxPath, title: material.fileName } })
+      router.pushUrl(
+        { url: 'pages/TextFilePreviewPage', params: { filePath: material.sandboxPath, title: material.fileName } })
       return
     }
     try {
-      await document.show(material.originalUri.length > 0 ? material.originalUri : uri, this.mimeTypeForMaterial(material))
+      await document.show(material.originalUri.length > 0 ? material.originalUri : uri,
+        this.mimeTypeForMaterial(material))
     } catch (err) {
       promptAction.showToast({ message: 'Preview coming soon', duration: 1200 })
       console.error('[StudyOralMaterials] open failed: ' + JSON.stringify(err))
@@ -687,7 +739,11 @@ struct HomePage {
     } else if (name === 'practice') {
       Image($r('app.media.ic_practice')).width(size).height(size).objectFit(ImageFit.Contain).opacity(dimmed ? 0.55 : 1)
     } else if (name === 'materials') {
-      Image($r('app.media.ic_materials')).width(size).height(size).objectFit(ImageFit.Contain).opacity(dimmed ? 0.55 : 1)
+      Image($r('app.media.ic_materials'))
+        .width(size)
+        .height(size)
+        .objectFit(ImageFit.Contain)
+        .opacity(dimmed ? 0.55 : 1)
     } else if (name === 'history') {
       Image($r('app.media.ic_history')).width(size).height(size).objectFit(ImageFit.Contain).opacity(dimmed ? 0.55 : 1)
     } else if (name === 'target') {
@@ -915,8 +971,8 @@ struct HomePage {
       if (actionName === 'upload') {
         this.uploadMaterialFile()
       } else if (actionName === 'practice') {
-        this.getUIContext().getRouter().pushUrl({ url: routeUrl, params: { topicId: '' } })
-      } else {
+        this.openPracticeStart(routeUrl)
+      } else if (routeUrl.length > 0) {
         this.getUIContext().getRouter().pushUrl({ url: routeUrl })
       }
     })
@@ -943,6 +999,7 @@ struct HomePage {
         }
         .layoutWeight(1)
         .margin({ left: 12 })
+
         Text(this.incompletePracticeProgress)
           .fontSize(14)
           .fontWeight(FontWeight.Bold)
@@ -955,23 +1012,22 @@ struct HomePage {
           .draggable(false)
       }
       .width('100%')
-      Text(this.incompletePracticeTime.length > 0 ? ('Last updated ' + this.incompletePracticeTime) : 'Resume unfinished questions')
+
+      Text(this.incompletePracticeTime.length > 0 ? ('Last updated ' + this.incompletePracticeTime) :
+        'Resume unfinished questions')
         .fontSize(12)
         .fontColor('#68728D')
         .width('100%')
         .margin({ top: 10 })
     }
-    .width('100%')
+    .layoutWeight(1)
     .padding(16)
     .backgroundColor('#F6F9FF')
     .borderRadius(12)
     .border({ width: 1, color: '#C9D8FF' })
     .margin({ bottom: 14 })
     .onClick(() => {
-      this.getUIContext().getRouter().pushUrl({
-        url: 'pages/PracticePage',
-        params: { topicId: '', examId: this.incompletePracticeExamId }
-      })
+      this.continuePracticeExam(this.incompletePracticeExamId)
     })
   }
 
@@ -1048,136 +1104,6 @@ struct HomePage {
 
   private immersiveTopInsetVp(): number {
     return this.getUIContext().px2vp(this.immersiveSystemTopInsetPx) + 8
-  }
-
-  @Builder
-  private practiceStartButton() {
-    Column() {
-      Stack({ alignContent: Alignment.Center }) {
-        Image($r('app.media.ic_practice_idle'))
-          .width(190)
-          .height(190)
-          .objectFit(ImageFit.Contain)
-          .opacity(this.isPracticeHold ? 0 : 1)
-          .draggable(false)
-        Image($r('app.media.ic_practice_hold'))
-          .width(190)
-          .height(190)
-          .objectFit(ImageFit.Contain)
-          .opacity(this.isPracticeHold ? 1 : 0)
-          .draggable(false)
-      }
-      .width('100%')
-      .height(204)
-      .scale({ x: this.isPracticeHold ? 0.96 : 1, y: this.isPracticeHold ? 0.96 : 1 })
-      .animation({ duration: 120, curve: Curve.EaseOut })
-    }
-    .width('100%')
-    .alignItems(HorizontalAlign.Center)
-    .onTouch((event: TouchEvent) => {
-      if (event.type === TouchType.Down) {
-        this.isPracticeHold = true
-      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-        this.isPracticeHold = false
-      }
-    })
-    .onClick(() => {
-      this.getUIContext().getRouter().pushUrl({ url: 'pages/PracticePage', params: { topicId: '' } })
-    })
-  }
-
-  @Builder
-  private practiceFilesPanel() {
-    Column() {
-      Row() {
-        Text('Attached Files')
-          .fontSize(15)
-          .fontWeight(FontWeight.Bold)
-          .fontColor('#111936')
-          .layoutWeight(1)
-      }
-      .width('100%')
-
-      if (this.recentMaterials.length > 0) {
-        ForEach(this.recentMaterials, (material: StudyMaterialRecord, index: number) => {
-          Row() {
-            this.brandIcon('materials', 30)
-            Column() {
-              Text(material.fileName)
-                .fontSize(13)
-                .fontWeight(FontWeight.Medium)
-                .fontColor('#111936')
-                .maxLines(1)
-                .textOverflow({ overflow: TextOverflow.Ellipsis })
-                .width('100%')
-              Text(material.questionCount.toString() + ' Q&A')
-                .fontSize(11)
-                .fontColor('#68728D')
-                .margin({ top: 2 })
-            }
-            .layoutWeight(1)
-            .margin({ left: 10 })
-            Image($r('app.media.ic_next_question'))
-              .width(20)
-              .height(20)
-              .objectFit(ImageFit.Contain)
-              .margin({ left: 8 })
-              .draggable(false)
-          }
-          .width('100%')
-          .height(42)
-          .margin({ top: index === 0 ? 10 : 6 })
-          .onClick(() => {
-            void this.openMaterial(material)
-          })
-        }, (material: StudyMaterialRecord) => material.id)
-      } else {
-        Row() {
-          this.brandIcon('materials', 30, true)
-          Text('No files added yet')
-            .fontSize(13)
-            .fontColor('#68728D')
-            .layoutWeight(1)
-            .margin({ left: 10 })
-        }
-        .width('100%')
-        .height(42)
-        .margin({ top: 10 })
-      }
-    }
-    .width('100%')
-    .padding(14)
-    .backgroundColor('#FFFFFF')
-    .borderRadius(12)
-    .border({ width: 1, color: '#E6EAF4' })
-    .margin({ top: 16 })
-  }
-
-  @Builder
-  private practiceTab() {
-    Scroll() {
-      Column() {
-        Column() {
-          this.practiceStartButton()
-          this.practiceFilesPanel()
-        }
-        .width('100%')
-        .layoutWeight(1)
-        .justifyContent(FlexAlign.Center)
-
-      }
-      .width('100%')
-      .height('100%')
-      .justifyContent(FlexAlign.Start)
-      .padding({ left: 18, right: 18, top: this.immersiveTopInsetVp(), bottom: 22 })
-    }
-    .width('100%')
-    .height('100%')
-    .scrollBar(BarState.Off)
-    .onWillScroll((_xOffset: number, yOffset: number, _scrollState: ScrollState, scrollSource: ScrollSource) => {
-      this.handleVerticalPageScroll(yOffset, scrollSource)
-    })
-    .edgeEffect(EdgeEffect.Spring)
   }
 
   @Builder
@@ -1322,7 +1248,12 @@ struct HomePage {
           )
         }
         .width('100%')
-        .padding({ left: 14, right: 14, top: 6, bottom: 6 })
+        .padding({
+          left: 14,
+          right: 14,
+          top: 6,
+          bottom: 6
+        })
         .backgroundColor('#FFFFFF')
         .borderRadius(12)
         .border({ width: 1, color: '#E6EAF4' })
@@ -1354,23 +1285,40 @@ struct HomePage {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%')
-        Text('Practice Result' + (record.progressText.length > 0 ? (' · ' + record.progressText) : ''))
+        Text((record.isIncomplete ? 'In Progress' : 'Practice Result') +
+          (record.progressText.length > 0 ? (' · ' + record.progressText) : ''))
           .fontSize(12)
           .fontColor('#59627E')
           .margin({ top: 4 })
       }
       .layoutWeight(1)
       .margin({ left: 10 })
-      Text(this.formatHomeTime(record.latestPracticeAt))
-        .fontSize(12)
-        .fontColor('#59627E')
-        .margin({ left: 8 })
-      Image($r('app.media.ic_next_question'))
-        .width(22)
-        .height(22)
-        .objectFit(ImageFit.Contain)
-        .margin({ left: 8 })
-        .draggable(false)
+
+      if (record.isIncomplete) {
+        Button('Continue')
+          .height(34)
+          .padding({ left: 12, right: 12 })
+          .fontSize(12)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#FFFFFF')
+          .backgroundColor('#1655FF')
+          .borderRadius(10)
+          .margin({ left: 8 })
+          .onClick(() => {
+            this.continuePracticeExam(record.examId)
+          })
+      } else {
+        Text(this.formatHomeTime(record.latestPracticeAt))
+          .fontSize(12)
+          .fontColor('#59627E')
+          .margin({ left: 8 })
+        Image($r('app.media.ic_next_question'))
+          .width(22)
+          .height(22)
+          .objectFit(ImageFit.Contain)
+          .margin({ left: 8 })
+          .draggable(false)
+      }
     }
     .width('100%')
     .height(74)
@@ -1380,7 +1328,11 @@ struct HomePage {
     .border({ width: 1, color: '#E6EAF4' })
     .margin({ bottom: 12 })
     .onClick(() => {
-      this.selectHistoryRecord(record)
+      if (record.isIncomplete) {
+        this.continuePracticeExam(record.examId)
+      } else {
+        this.selectHistoryRecord(record)
+      }
     })
   }
 
@@ -1396,6 +1348,7 @@ struct HomePage {
         Column().height(6).width(value.length > 0 ? (value + '%') : '0%').backgroundColor('#3158F4').borderRadius(3)
       }
       .layoutWeight(1)
+
       Text(value.length > 0 ? value : '-')
         .fontSize(12)
         .fontColor('#111936')
@@ -1414,7 +1367,12 @@ struct HomePage {
           .fontSize(12)
           .fontWeight(FontWeight.Bold)
           .fontColor(row.practiced ? (Number(row.score) < 60 ? '#F03A43' : '#1655FF') : '#59627E')
-          .padding({ left: 10, right: 10, top: 4, bottom: 4 })
+          .padding({
+            left: 10,
+            right: 10,
+            top: 4,
+            bottom: 4
+          })
           .backgroundColor(row.practiced ? (Number(row.score) < 60 ? '#FFF1F1' : '#EEF3FF') : '#F4F6FA')
           .borderRadius(10)
         Blank()
@@ -1506,7 +1464,8 @@ struct HomePage {
           .fontColor(this.selectedHistoryScoreText.length > 0 ? '#1655FF' : '#111936')
           .width('100%')
           .margin({ top: 6 })
-        Text('Attachments: ' + (this.selectedHistoryFileName.length > 0 ? this.selectedHistoryFileName : 'Practice files'))
+        Text(
+          'Attachments: ' + (this.selectedHistoryFileName.length > 0 ? this.selectedHistoryFileName : 'Practice files'))
           .fontSize(12)
           .fontColor('#59627E')
           .lineHeight(18)
@@ -1606,6 +1565,7 @@ struct HomePage {
             Blank().width(18)
           }
           .width('100%')
+          .margin({ top: 10 })
         }
 
         Row() {
@@ -1664,7 +1624,7 @@ struct HomePage {
             top: 6,
             bottom: 6
           })
-          .margin({ top: 10 })
+          .margin({ top: 5 })
           .backgroundColor('#FFFFFF')
           .borderRadius(12)
           .border({ width: 1, color: '#E6EAF4' })
@@ -1698,11 +1658,6 @@ struct HomePage {
           this.homeTab()
         }
         .tabBar(this.bottomTabBarStyle($r('sys.symbol.house_fill'), 'Home'))
-
-        TabContent() {
-          this.practiceTab()
-        }
-        .tabBar(this.bottomTabBarStyle($r('sys.symbol.discover_fill'), 'Practice'))
 
         TabContent() {
           this.materialsTab()

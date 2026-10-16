@@ -226,7 +226,7 @@ struct MaterialsPage {
     .onClick(() => {
       this.getUIContext().getRouter().replaceUrl({
         url: 'pages/HomePage',
-        params: { tab: label === 'Practice' ? 'practice' : (label === 'Materials' ? 'materials' : (label === 'History' ? 'history' : 'home')) }
+        params: { tab: label === 'Materials' ? 'materials' : (label === 'History' ? 'history' : 'home') }
       })
     })
   }
@@ -396,7 +396,6 @@ struct MaterialsPage {
 
       Row() {
         this.navItem('home', 'Home', false, 'pages/HomePage')
-        this.navItem('practice', 'Practice', false, 'pages/TopicPage')
         this.navItem('materials', 'Materials', true, 'pages/MaterialsPage')
         this.navItem('history', 'History', false, 'pages/HistoryPage')
       }
